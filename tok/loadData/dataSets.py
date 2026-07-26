@@ -5,7 +5,7 @@ import requests
 import os
 
 API = "http://localhost:8823"
-CACHE_DIR = "/media/user/f7a503ec-b25c-41a5-9baa-d350714f613a/HUGGING_FACE"
+CACHE_DIR = "data/"
 
 def getNextSample():
     ds = load_dataset("HuggingFaceCode/stack-v3-train", split="train", streaming=True, cache_dir=CACHE_DIR)
@@ -45,9 +45,11 @@ if __name__ == "__main__":
     tokenCount = 0
     for rec in gen:
         res = requests.post(API+"/api/receive-data", json=rec)
+	if res.status_code != 200:
+	    continue
         tokenCount += res.json()["token_count"]
         _iter += 1
-        if _iter % 32 == 0:
-            print(f"iter {_iter} tokenCount {tokenCount}")
-            os._exit(0)
+        if _iter % 16 == 0:
+            print(f"iter {_iter} tokenCount {tokenCount:_}")
+            # os._exit(0)
     print("Done")
