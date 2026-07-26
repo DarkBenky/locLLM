@@ -2,19 +2,136 @@ package main
 
 import (
 	"log"
+	"net/http"
+	"strings"
+	"sync"
 	"tokenize/libs"
+
+	"github.com/labstack/echo/v5"
+	"github.com/labstack/echo/v5/middleware"
 )
 
+type CategoryStore struct {
+	mu         sync.Mutex
+	Categories map[string]uint8
+}
+
+var tok *libs.Tokenizer
+var db *libs.DB
+var categoryStore = CategoryStore{
+	Categories: make(map[string]uint8),
+}
+
+func init() {
+	tok = libs.NewTokenizer("tokenizer_models/tokenizer.model")
+	log.Printf("Vocab size: %d", tok.GetVocabSize())
+
+	testString := "testing if tokenizer works"
+	rec := tok.Tokenize(testString, 0)
+	out := tok.GetText(rec)
+	out = strings.TrimSuffix(out, "</s>")
+	if out != testString {
+		log.Fatalf("tokenizer does not work: input=%q output=%q", testString, out)
+	}
+
+	var err error
+	db, err = libs.Open("db/tokenize.db", "db/tokenize.bin")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	categoryMap, err := db.GetCategoryIndex()
+	if err != nil {
+		log.Fatal(err)
+	}
+	categoryStore.Categories = categoryMap
+}
+
+func handleReceiveData(c *echo.Context) error {
+	type Request struct {
+		Text     string `json:"text"`
+		Category string `json:"category"`
+	}
+
+	req := new(Request)
+	if err := c.Bind(req); err != nil {
+		return err
+	}
+
+	log.Printf("Received text: %s", req.Text)
+	log.Printf("Received category: %s", req.Category)
+
+	categoryStore.mu.Lock()
+	id, ok := categoryStore.Categories[req.Category]
+	categoryStore.mu.Unlock()
+
+	if !ok {
+		idx, err := db.GetOrCreateCategory(req.Category)
+		if err != nil {
+			return err
+		}
+		categoryStore.mu.Lock()
+		categoryStore.Categories[req.Category] = idx
+		categoryStore.mu.Unlock()
+		id = idx
+	}
+
+	rec := tok.Tokenize(req.Text, id)
+
+	if err := db.SaveRecord(rec); err != nil {
+		return err
+	}
+	return c.JSON(http.StatusOK, map[string]int{"tokenizer_vocab_size": tok.GetVocabSize(), "token_count": int(rec.TokenCount)})
+}
+
+func handleGetNextSamples(c *echo.Context) error {
+	type Request struct {
+		SampleCount int `query:"sample_count"`
+	}
+
+	req := new(Request)
+	if err := c.Bind(req); err != nil {
+		return err
+	}
+	if req.SampleCount <= 0 {
+		req.SampleCount = 256
+	}
+
+	samples, err := db.GetNextSamples(req.SampleCount)
+	if err != nil {
+		return err
+	}
+	if samples == nil {
+		samples = [][]byte{}
+	}
+	return c.JSON(http.StatusOK, map[string]interface{}{"samples": samples})
+}
+
+func handleGetCategoryIndex(c *echo.Context) error {
+	categoryStore.mu.Lock()
+	defer categoryStore.mu.Unlock()
+	return c.JSON(http.StatusOK, categoryStore.Categories)
+}
+
+func handleStats(c *echo.Context) error {
+	stats, err := db.GetStats()
+	if err != nil {
+		return err
+	}
+	return c.JSON(http.StatusOK, stats)
+}
+
 func main() {
-	t := libs.NewTokenizer("tokenizer_models/tokenizer.model")
-	log.Printf("Vocab size: %d", t.GetVocabSize())
+	e := echo.New()
 
-	text := "Hello, world! This is a test of the Llama 2 tokenizer."
-	rec := t.Tokenize(text, 0)
+	e.Use(middleware.RequestLogger())
+	e.Use(middleware.Recover())
 
-	log.Printf("Input:   %q", text)
-	log.Printf("Tokens:  %v (%d tokens)", rec.Tokens, len(rec.Tokens))
-
-	decoded := t.GetText(rec)
-	log.Printf("Decoded: %q", decoded)
+	e.POST("/api/receive-data", handleReceiveData)
+	e.GET("/api/get-next-samples", handleGetNextSamples)
+	e.GET("/api/get-category-index", handleGetCategoryIndex)
+	e.GET("/api/stats", handleStats)
+	if err := e.Start(":8823"); err != nil {
+		log.Fatal(err)
+	}
 }
