@@ -45,11 +45,11 @@ if __name__ == "__main__":
     tokenCount = 0
     for rec in gen:
         res = requests.post(API+"/api/receive-data", json=rec)
-	if res.status_code != 200:
-	    continue
+        if res.status_code != 200:
+            continue
         tokenCount += res.json()["token_count"]
         _iter += 1
         if _iter % 16 == 0:
-            print(f"iter {_iter} tokenCount {tokenCount:_}")
+            print(f"iter {_iter:_} tokenCount {tokenCount:_}")
             # os._exit(0)
     print("Done")
