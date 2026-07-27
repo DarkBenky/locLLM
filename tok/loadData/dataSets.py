@@ -8,35 +8,39 @@ API = "http://localhost:8823"
 CACHE_DIR = "data/"
 
 def getNextSample():
-    # ds = load_dataset("HuggingFaceCode/stack-v3-train", split="train", streaming=True, cache_dir=CACHE_DIR)
-    # for repo in ds:
-    #     for f in repo["files"]:
-    #         yield {
-    #             "category": f["language"],
-    #             "text": f["content"],
-    #         }
+    ds = load_dataset("HuggingFaceCode/stack-v3-train", split="train", streaming=True, cache_dir=CACHE_DIR)
+    COMMON_LANG = ["Python", "JavaScript", "C++", "Java", "C", "Go", "TypeScript", "Ruby", "Rust", "PHP", "Swift", "C#", "Kotlin", "Scala", "Dart", "Objective-C", "Perl", "Lua", "SQL", "HTML", "CSS", "JSON", "YAML", "Markdown", "XML", "XML"]
+    for repo in ds:
+        for f in repo["files"]:
+            category = f["language"]
+            if f["language"] not in COMMON_LANG:
+                category = "OtherLanguage"
+            yield {
+                "category": category,
+                "text": f["content"],
+            }
 
-    # ds = load_dataset("SupraLabs/reasoning-corpus-4K-5M-v1", split="train", streaming=True, cache_dir=CACHE_DIR)
-    # for repo in ds:
-    #     yield {
-    #         "text": repo["ChatML"],
-    #         "category": "reasoning",
-    #     }
+    ds = load_dataset("SupraLabs/reasoning-corpus-4K-5M-v1", split="train", streaming=True, cache_dir=CACHE_DIR)
+    for repo in ds:
+        yield {
+            "text": repo["ChatML"],
+            "category": "reasoning",
+        }
 
-    # ds = load_dataset("Manusagents/GPT-5.5-Gemini-3.1-Pro-Grok-4-Claude-Fable-5-Mythos-5-Qwen-3.7-Max-and-more-Distillation-Dataset", split="train", streaming=True, cache_dir=CACHE_DIR)
-    # for repo in ds:
-    #     instructions = ast.literal_eval(repo["instruction"])["messages"]
-    #     response = repo["response"]
+    ds = load_dataset("Manusagents/GPT-5.5-Gemini-3.1-Pro-Grok-4-Claude-Fable-5-Mythos-5-Qwen-3.7-Max-and-more-Distillation-Dataset", split="train", streaming=True, cache_dir=CACHE_DIR)
+    for repo in ds:
+        instructions = ast.literal_eval(repo["instruction"])["messages"]
+        response = repo["response"]
 
-    #     text = ""
-    #     for msg in instructions:
-    #         text += f"<|im_start|>{msg['role']}\n{msg['content']}<|im_end|>\n"
-    #     text += f"<|im_start|>assistant\n{response}<|im_end|>"
+        text = ""
+        for msg in instructions:
+            text += f"<|im_start|>{msg['role']}\n{msg['content']}<|im_end|>\n"
+        text += f"<|im_start|>assistant\n{response}<|im_end|>"
 
-    #     yield {
-    #         "text": text,
-    #         "category": repo["category"],
-    #     }
+        yield {
+            "text": text,
+            "category": repo["category"],
+        }
 
     ds = load_dataset("m-a-p/FineFineWeb", split="train", streaming=True, cache_dir=CACHE_DIR)
     for repo in ds:
