@@ -1,3 +1,4 @@
 tok/tokenize/db
 model/__pycache__
 model/wandb
+tok/loadData/data/*.lock
