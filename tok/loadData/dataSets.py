@@ -53,8 +53,8 @@ if __name__ == "__main__":
     _iter = 0
     tokenCount = 0
     for rec in gen:
-        pprint(rec)
-        os._exit(0)
+        # pprint(rec)
+        # os._exit(0)
         res = requests.post(API+"/api/receive-data", json=rec)
         if res.status_code != 200:
             continue
