@@ -33,7 +33,10 @@ def getNextSample():
     def manusagents_gen():
         ds = load_dataset("Manusagents/GPT-5.5-Gemini-3.1-Pro-Grok-4-Claude-Fable-5-Mythos-5-Qwen-3.7-Max-and-more-Distillation-Dataset", split="train", streaming=True, cache_dir=CACHE_DIR)
         for repo in ds:
-            instructions = ast.literal_eval(repo["instruction"])["messages"]
+            try:
+                instructions = ast.literal_eval(repo["instruction"])["messages"]
+            except (ValueError, SyntaxError, KeyError):
+                continue
             response = repo["response"]
 
             text = ""
