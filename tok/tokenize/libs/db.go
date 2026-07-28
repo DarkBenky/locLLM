@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"sync"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -66,6 +67,11 @@ CREATE TABLE IF NOT EXISTS cursor (
 `
 
 func Open(dbPath, filePath string) (*DB, error) {
+	// Ensure parent directories exist (survives manual db/ deletion)
+	if err := os.MkdirAll(filepath.Dir(dbPath), 0755); err != nil {
+		return nil, fmt.Errorf("create db dir: %w", err)
+	}
+
 	sqlDB, err := sql.Open("sqlite3", dbPath)
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite: %w", err)
