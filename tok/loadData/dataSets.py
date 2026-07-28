@@ -4,12 +4,13 @@ from pprint import pprint
 import requests
 import os
 import json
+import time
 
 API = "http://localhost:8823"
 CACHE_DIR = "data/"
 
 def getNextSample():
-    COMMON_LANG = ["Python", "JavaScript", "C++", "Java", "C", "Go", "TypeScript", "Ruby", "Rust", "PHP", "Swift", "C#", "Kotlin", "Scala", "Dart", "Objective-C", "Perl", "Lua", "SQL", "HTML", "CSS", "JSON", "YAML", "Markdown", "XML", "XML"]
+    COMMON_LANG = ["Python", "JavaScript", "C++", "Java", "C", "Go", "TypeScript", "Ruby", "Rust", "PHP", "Swift", "C#", "Kotlin", "Scala", "Dart", "Objective-C", "Perl", "Lua", "SQL", "HTML", "CSS", "JSON", "YAML", "Markdown", "XML"]
 
     def stack_v3_gen():
         ds = load_dataset("HuggingFaceCode/stack-v3-train", split="train", streaming=True, cache_dir=CACHE_DIR)
@@ -31,6 +32,25 @@ def getNextSample():
                 "category": "reasoning",
             }
 
+    def code_instruction_gen():
+        ds = load_dataset("TokenBender/code_instructions_122k_alpaca_style", split="train", streaming=True, cache_dir=CACHE_DIR)
+        for repo in ds:
+            yield {
+                "text": repo["text"],
+                "category": "instruction_code",
+            }
+
+    def open_math_gen():
+        ds = load_dataset("nvidia/OpenMathInstruct-2", split="train", streaming=True, cache_dir=CACHE_DIR)
+        for repo in ds:
+            problem = repo["problem"]
+            solution = repo["generated_solution"]
+            _text = f"Problem: {problem}\nSolution: {solution}"
+            yield {
+                "text": _text,
+                "category": "math",
+            }
+
     def manusagents_gen():
         ds = load_dataset(
             "Manusagents/GPT-5.5-Gemini-3.1-Pro-Grok-4-Claude-Fable-5-Mythos-5-Qwen-3.7-Max-and-more-Distillation-Dataset",
@@ -46,8 +66,11 @@ def getNextSample():
                 if isinstance(raw, str):
                     try:
                         parsed = json.loads(raw)
-                    except:
-                        parsed = ast.literal_eval(raw)
+                    except (json.JSONDecodeError, ValueError):
+                        try:
+                            parsed = ast.literal_eval(raw)
+                        except (ValueError, SyntaxError):
+                            continue
                 elif isinstance(raw, dict):
                     parsed = raw
                 else:
@@ -77,14 +100,14 @@ def getNextSample():
     def fineweb_gen():
         ds = load_dataset("m-a-p/FineFineWeb", split="train", streaming=True, cache_dir=CACHE_DIR)
         for repo in ds:
-            if repo["language_score"] > 0.75:
+            if repo["language_score"] < 0.75:
                 continue
             yield {
                 "text": repo["text"],
                 "category": "web",
             }
 
-    gens = [stack_v3_gen(), reasoning_gen(), manusagents_gen(), fineweb_gen()]
+    gens = [stack_v3_gen(), reasoning_gen(), manusagents_gen(), fineweb_gen(), code_instruction_gen(), open_math_gen()]
     active = list(range(len(gens)))
 
     while active:
@@ -99,6 +122,7 @@ if __name__ == "__main__":
     gen = getNextSample()
     _iter = 0
     tokenCount = 0
+    lastUpdate = time.time()
     for rec in gen:
         # pprint(rec)
         # os._exit(0)
@@ -108,6 +132,9 @@ if __name__ == "__main__":
         tokenCount += res.json()["token_count"]
         _iter += 1
         if _iter % 16 == 0:
-            print(f"iter {_iter:_} tokenCount {tokenCount:_}")
+            now = time.time()
+            tokensPerSec = tokenCount / (now - lastUpdate)
+            lastUpdate = now
+            print(f"iter {_iter:_} tokenCount {tokenCount:_} tokensPerSec {tokensPerSec:.2f}")
             # os._exit(0)
     print("Done")

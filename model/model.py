@@ -118,7 +118,7 @@ class Transformer(nn.Module):
  
         x = self.tok_emb(idx)
         for block in self.blocks:
-            x = block(x, cos, sin)
+            x = torch.utils.checkpoint.checkpoint(block, x, cos, sin, use_reentrant=False)
         x = self.final_norm(x)
         logits = self.lm_head(x)
  

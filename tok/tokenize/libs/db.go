@@ -83,6 +83,10 @@ func Open(dbPath, filePath string) (*DB, error) {
 		return nil, fmt.Errorf("seed cursor: %w", err)
 	}
 
+	// Migration: add content_hash column for deduplication (ignore error if column exists)
+	sqlDB.Exec("ALTER TABLE records ADD COLUMN content_hash TEXT")
+	sqlDB.Exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_records_content_hash ON records(content_hash)")
+
 	file, err := os.OpenFile(filePath, os.O_APPEND|os.O_CREATE|os.O_RDWR, 0644)
 	if err != nil {
 		sqlDB.Close()
@@ -168,7 +172,24 @@ func (d *DB) GetCategoryIndex() (map[string]uint8, error) {
 	return index, rows.Err()
 }
 
-func (d *DB) SaveRecord(record *Record) error {
+func (d *DB) HashExists(hash string) (bool, error) {
+	d.muDB.Lock()
+	defer d.muDB.Unlock()
+
+	var count int
+	err := d.db.QueryRow("SELECT COUNT(*) FROM records WHERE content_hash = ?", hash).Scan(&count)
+	return count > 0, err
+}
+
+func (d *DB) ResetCursor() error {
+	d.muDB.Lock()
+	defer d.muDB.Unlock()
+
+	_, err := d.db.Exec("UPDATE cursor SET file_offset = 0 WHERE id = 1")
+	return err
+}
+
+func (d *DB) SaveRecord(record *Record, contentHash string) error {
 	d.muFile.Lock()
 	d.muDB.Lock()
 	defer d.muDB.Unlock()
@@ -200,8 +221,8 @@ func (d *DB) SaveRecord(record *Record) error {
 	}
 
 	if _, err := tx.Exec(
-		"INSERT INTO records (category_id, token_count, file_offset) VALUES (?, ?, ?)",
-		record.Category, record.TokenCount, offset,
+		"INSERT INTO records (category_id, token_count, file_offset, content_hash) VALUES (?, ?, ?, ?)",
+		record.Category, record.TokenCount, offset, contentHash,
 	); err != nil {
 		return fmt.Errorf("insert record: %w", err)
 	}
@@ -299,7 +320,10 @@ func (d *DB) GetNextSamples(count int) ([][]byte, error) {
 
 	for i := 0; i < count; i++ {
 		if offset >= fileSize {
-			break
+			if fileSize == 0 {
+				break
+			}
+			offset = 0 // wrap around for next epoch
 		}
 		raw, cat, tokCount, nextOff, err := readRecordAt(d.file, offset)
 		if err != nil {

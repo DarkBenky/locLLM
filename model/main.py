@@ -1,4 +1,8 @@
 import os
+
+os.environ.setdefault("PYTORCH_ALLOC_CONF", "expandable_segments:True")
+
+import random
 import time
 import math
 import struct
@@ -10,19 +14,26 @@ import torch
 import torch.nn.functional as F
 import wandb
 
+try:
+    import visualtorch
+    HAS_VISUALTORCH = True
+except ImportError:
+    HAS_VISUALTORCH = False
+
 from model import Transformer
 
 API = "http://localhost:8823"
 TOKENIZER_MODEL_PATH = "../tok/tokenize/tokenizer_models/tokenizer.model"
 
-VOCAB_SIZE = 32000
-BLOCK_SIZE = 512
-BATCH_SIZE = 32
-DIM = 512
-N_LAYERS = 8
-N_HEADS = 8
+BLOCK_SIZE = 4096
+BATCH_SIZE = 8
+DIM = 1024
+N_LAYERS = 26
+N_HEADS = 16
 
-MAX_STEPS = 20_000
+RESUME_FROM_CHECKPOINT = True
+
+MAX_STEPS = 1_000_000
 WARMUP_STEPS = 500
 MAX_LR = 3e-4
 MIN_LR = 3e-5
@@ -30,13 +41,16 @@ WEIGHT_DECAY = 0.1
 GRAD_CLIP = 1.0
 
 LOG_EVERY = 10
-CKPT_EVERY = 1000
+CKPT_EVERY = 250
 CKPT_DIR = "checkpoints"
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 sp = spm.SentencePieceProcessor(model_file=TOKENIZER_MODEL_PATH)
-PAD_ID = sp.pad_id() if sp.pad_id() >= 0 else 0
+VOCAB_SIZE = sp.get_piece_size() + 4  # +4 reserved FIM sentinel slots
+
+# FIM sentinel token IDs (reserved, not in SentencePiece vocab — inserted manually during batch construction)
+FIM_PRE, FIM_SUF, FIM_MID, FIM_END = sp.get_piece_size(), sp.get_piece_size() + 1, sp.get_piece_size() + 2, sp.get_piece_size() + 3
 
 
 def decode_record(data: bytes) -> tuple[int, list[int]]:
@@ -53,26 +67,89 @@ def decode_record(data: bytes) -> tuple[int, list[int]]:
     return category, tokens
 
 
-def get_next_samples(count: int) -> list[list[int]]:
+def get_next_samples(count: int) -> list[tuple[int, list[int]]]:
+    """Return list of (category_id, token_ids) pairs."""
     res = requests.get(API + "/api/get-next-samples", params={"sample_count": count})
     raw_samples = res.json().get("samples", [])
-    return [decode_record(base64.b64decode(raw))[1] for raw in raw_samples]
+    return [decode_record(base64.b64decode(raw)) for raw in raw_samples]
+
+
+def get_code_category_ids() -> set[int]:
+    """Fetch category index from server and return IDs belonging to code."""
+    res = requests.get(API + "/api/get-category-index")
+    cat_map = res.json()
+    code_names = {
+        "Python", "JavaScript", "C++", "Java", "C", "Go", "TypeScript",
+        "Ruby", "Rust", "PHP", "Swift", "C#", "Kotlin", "Scala", "Dart",
+        "Objective-C", "Perl", "Lua", "SQL", "HTML", "CSS", "JSON",
+        "YAML", "Markdown", "XML", "OtherLanguage",
+    }
+    return {cid for name, cid in cat_map.items() if name in code_names}
+
+
+CODE_CATEGORY_IDS = set()
 
 
 def make_batch(batch_size: int, block_size: int) -> tuple[torch.Tensor, torch.Tensor]:
-    token_lists = get_next_samples(batch_size)
-    if not token_lists:
-        raise RuntimeError("no samples returned — check the data server / cursor position")
+    max_retries = 300  # 10 minutes at 2s sleep
+    for attempt in range(max_retries):
+        samples = get_next_samples(batch_size)
+        if samples:
+            break
+        if attempt == 0:
+            print("WARNING: no samples returned — cursor may be exhausted, retrying...")
+        time.sleep(2)
+    else:
+        raise RuntimeError(
+            f"no samples returned after {max_retries} retries — "
+            "check that the data server is running and data exists"
+        )
 
-    padded = torch.full((len(token_lists), block_size + 1), PAD_ID, dtype=torch.long)
-    for i, tokens in enumerate(token_lists):
+    # Separate categories and token lists
+    categories = [cat for cat, _ in samples]
+    token_lists = [tokens for _, tokens in samples]
+
+    x = torch.full((len(token_lists), block_size), 0, dtype=torch.long)
+    y = torch.full((len(token_lists), block_size), -100, dtype=torch.long)
+    for i, (tokens, cat_id) in enumerate(zip(token_lists, categories)):
         tokens = tokens[: block_size + 1]
-        if tokens:
-            padded[i, : len(tokens)] = torch.tensor(tokens, dtype=torch.long)
+        if len(tokens) < 4:
+            continue
+        seq = torch.tensor(tokens, dtype=torch.long)
+        n = min(len(tokens) - 1, block_size)
 
-    x = padded[:, :-1].to(DEVICE)
-    y = padded[:, 1:].to(DEVICE)
-    return x, y
+        is_code = cat_id in CODE_CATEGORY_IDS
+        if is_code and random.random() < 0.5 and len(tokens) >= 64:
+            pre_end = random.randint(len(tokens) // 4, 7 * len(tokens) // 10)
+            mid_max = min(len(tokens) - pre_end - 4, len(tokens) // 4)
+            mid_len = random.randint(4, max(5, mid_max))
+            mid_end = min(pre_end + mid_len, len(tokens))
+
+            prefix = seq[:pre_end]
+            middle = seq[pre_end:mid_end]
+            suffix = seq[mid_end:]
+
+            # Assemble: FIM_PRE | prefix | FIM_SUF | suffix | FIM_MID | middle | FIM_END
+            fim_seq = torch.cat([
+                torch.tensor([FIM_PRE], dtype=torch.long),
+                prefix,
+                torch.tensor([FIM_SUF], dtype=torch.long),
+                suffix,
+                torch.tensor([FIM_MID], dtype=torch.long),
+                middle,
+                torch.tensor([FIM_END], dtype=torch.long),
+            ])
+            fim_n = min(len(fim_seq) - 1, block_size)
+            x[i, :fim_n] = fim_seq[:fim_n]
+            mid_pos = len(prefix) + len(suffix) + 2
+            if fim_n > mid_pos:
+                end = min(fim_n - mid_pos, len(fim_seq) - mid_pos - 1)
+                y[i, mid_pos:mid_pos + end] = fim_seq[mid_pos + 1:mid_pos + 1 + end]
+        else:
+            x[i, :n] = seq[:n]
+            y[i, :n] = seq[1:n + 1]
+
+    return x.to(DEVICE), y.to(DEVICE)
 
 
 def get_lr(step: int) -> float:
@@ -86,9 +163,14 @@ def get_lr(step: int) -> float:
 
 
 if __name__ == "__main__":
-    tokens = get_next_samples(1)[0]
-    print(tokens[:20])
-    print(sp.decode(tokens)[:200])
+    CODE_CATEGORY_IDS = get_code_category_ids()
+    print(f"Code categories for FIM: {len(CODE_CATEGORY_IDS)} IDs")
+
+    samples = get_next_samples(1)
+    if samples:
+        _, tokens = samples[0]
+        print(tokens[:20])
+        print(sp.decode(tokens)[:200])
 
     model = Transformer(vocab_size=VOCAB_SIZE, dim=DIM, n_layers=N_LAYERS, n_heads=N_HEADS,
                          max_seq_len=BLOCK_SIZE).to(DEVICE)
@@ -106,17 +188,44 @@ if __name__ == "__main__":
         lr=MAX_LR, betas=(0.9, 0.95),
     )
 
+    start_step = 0
     os.makedirs(CKPT_DIR, exist_ok=True)
+    if RESUME_FROM_CHECKPOINT:
+        ckpts = sorted(
+            [f for f in os.listdir(CKPT_DIR) if f.endswith(".pt")],
+            key=lambda x: int(x.replace("step_", "").replace(".pt", "")),
+        )
+        if ckpts:
+            latest = os.path.join(CKPT_DIR, ckpts[-1])
+            print(f"Loading checkpoint: {latest}")
+            ckpt = torch.load(latest, map_location=DEVICE)
+            model.load_state_dict(ckpt["model"])
+            optimizer.load_state_dict(ckpt["optimizer"])
+            start_step = ckpt["step"] + 1
+            print(f"Resuming from step {start_step}")
+        else:
+            print("No checkpoint found, starting from scratch")
 
     wandb.login()
-    wandb.init(project="locLMM", entity="locLMM", config={
+    wandb.init(project="locLMM", config={
         "vocab_size": VOCAB_SIZE, "block_size": BLOCK_SIZE, "batch_size": BATCH_SIZE,
         "dim": DIM, "n_layers": N_LAYERS, "n_heads": N_HEADS,
         "max_lr": MAX_LR, "max_steps": MAX_STEPS, "params": n_params,
     })
 
+    if HAS_VISUALTORCH:
+        try:
+            dummy = torch.zeros(1, BLOCK_SIZE, dtype=torch.long).to(DEVICE)
+            graph = visualtorch.graph_view(model, dummy, style="flow")
+            wandb.log({"model_architecture": wandb.Image(graph)})
+            print("Logged model architecture diagram to wandb")
+        except Exception as e:
+            print(f"visualtorch graph failed: {e}")
+
     model.train()
-    for step in range(MAX_STEPS):
+    scaler = torch.amp.GradScaler(enabled=(DEVICE == "cuda"))
+
+    for step in range(start_step, MAX_STEPS):
         t0 = time.time()
 
         x, y = make_batch(BATCH_SIZE, BLOCK_SIZE)
@@ -125,14 +234,22 @@ if __name__ == "__main__":
         for group in optimizer.param_groups:
             group["lr"] = lr
 
-        with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=(DEVICE == "cuda")):
+        with torch.autocast(device_type="cuda", dtype=torch.float16, enabled=(DEVICE == "cuda")):
             logits, _ = model(x)
-            loss = F.cross_entropy(logits.view(-1, logits.size(-1)), y.reshape(-1), ignore_index=PAD_ID)
+            loss = F.cross_entropy(logits.view(-1, logits.size(-1)), y.reshape(-1))
+
+        ppl = math.exp(loss.item())
+        with torch.no_grad():
+            preds = logits.argmax(dim=-1)
+            mask = y != -100
+            acc = (preds[mask] == y[mask]).float().mean().item() if mask.any() else 0.0
 
         optimizer.zero_grad(set_to_none=True)
-        loss.backward()
+        scaler.scale(loss).backward()
+        scaler.unscale_(optimizer)
         grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), GRAD_CLIP)
-        optimizer.step()
+        scaler.step(optimizer)
+        scaler.update()
 
         if DEVICE == "cuda":
             torch.cuda.synchronize()
@@ -140,9 +257,11 @@ if __name__ == "__main__":
         tok_per_sec = (BATCH_SIZE * BLOCK_SIZE) / dt
 
         if step % LOG_EVERY == 0:
-            print(f"step {step:6d} | loss {loss.item():.4f} | lr {lr:.2e} | "
+            print(f"step {step:6d} | loss {loss.item():.4f} | ppl {ppl:.1f} | "
+                  f"acc {acc:.3f} | lr {lr:.2e} | "
                   f"grad_norm {grad_norm:.2f} | {tok_per_sec:.0f} tok/s")
-            wandb.log({"loss": loss.item(), "lr": lr, "grad_norm": grad_norm.item(),
+            wandb.log({"loss": loss.item(), "ppl": ppl, "acc": acc, "lr": lr,
+                        "grad_norm": grad_norm.item(),
                         "tok_per_sec": tok_per_sec}, step=step)
 
         if step > 0 and step % CKPT_EVERY == 0:
