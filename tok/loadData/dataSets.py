@@ -3,6 +3,7 @@ from datasets import load_dataset
 from pprint import pprint
 import requests
 import os
+import json
 
 API = "http://localhost:8823"
 CACHE_DIR = "data/"
@@ -31,23 +32,47 @@ def getNextSample():
             }
 
     def manusagents_gen():
-        ds = load_dataset("Manusagents/GPT-5.5-Gemini-3.1-Pro-Grok-4-Claude-Fable-5-Mythos-5-Qwen-3.7-Max-and-more-Distillation-Dataset", split="train", streaming=True, cache_dir=CACHE_DIR)
+        ds = load_dataset(
+            "Manusagents/GPT-5.5-Gemini-3.1-Pro-Grok-4-Claude-Fable-5-Mythos-5-Qwen-3.7-Max-and-more-Distillation-Dataset",
+            split="train", streaming=True, cache_dir=CACHE_DIR
+        )
         for repo in ds:
             try:
-                instructions = ast.literal_eval(repo["instruction"])["messages"]
-            except (ValueError, SyntaxError, KeyError):
+                raw = repo.get("instruction")
+                resp = repo.get("response")
+                if not raw or not resp:
+                    continue
+    
+                if isinstance(raw, str):
+                    try:
+                        parsed = json.loads(raw)
+                    except:
+                        parsed = ast.literal_eval(raw)
+                elif isinstance(raw, dict):
+                    parsed = raw
+                else:
+                    continue
+    
+                msgs = parsed.get("messages")
+                if not isinstance(msgs, list):
+                    continue
+    
+                parts = []
+                for m in msgs:
+                    if not isinstance(m, dict):
+                        continue
+                    r = m.get("role") or m.get("from")
+                    c = m.get("content") or m.get("value")
+                    if isinstance(r, str) and isinstance(c, str) and r and c:
+                        parts.append(f"<|im_start|>{r}\n{c}<|im_end|>")
+    
+                if not parts or not isinstance(resp, str) or not resp.strip():
+                    continue
+    
+                parts.append(f"<|im_start|>assistant\n{resp}<|im_end|>")
+                yield {"text": "\n".join(parts), "category": "instruction"}
+            except:
                 continue
-            response = repo["response"]
-
-            text = ""
-            for msg in instructions:
-                text += f"<|im_start|>{msg['role']}\n{msg['content']}<|im_end|>\n"
-            text += f"<|im_start|>assistant\n{response}<|im_end|>"
-
-            yield {
-                "text": text,
-                "category": "instruction",
-            }
 
     def fineweb_gen():
         ds = load_dataset("m-a-p/FineFineWeb", split="train", streaming=True, cache_dir=CACHE_DIR)
