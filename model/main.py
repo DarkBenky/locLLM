@@ -35,10 +35,10 @@ DIM = 1024
 N_LAYERS = 26
 N_HEADS = 16
 
-RESUME_FROM_CHECKPOINT = False
+RESUME_FROM_CHECKPOINT = True
 
 MAX_STEPS = 1_000_000
-WARMUP_STEPS = 500
+WARMUP_STEPS = 100
 MAX_LR = 3e-4
 MIN_LR = 3e-5
 WEIGHT_DECAY = 0.1
@@ -46,7 +46,7 @@ GRAD_CLIP = 1.0
 
 LOG_EVERY = 10
 CKPT_EVERY = 250
-CKPT_DIR = "checkpoints"
+CKPT_DIR = "/media/user/d34d5703-7e6e-4712-b42b-1c6c5d4e5f07/CKPT_DIR"
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -93,32 +93,55 @@ def get_code_category_ids() -> set[int]:
 
 CODE_CATEGORY_IDS = set()
 
+_leftover_cache = []
+MAX_CACHE_SIZE = 1024
+
 
 def make_batch(batch_size: int, block_size: int) -> tuple[torch.Tensor, torch.Tensor]:
-    max_retries = 300  # 10 minutes at 2s sleep
-    for attempt in range(max_retries):
-        samples = get_next_samples(batch_size)
-        if samples:
-            break
-        if attempt == 0:
-            print("WARNING: no samples returned — cursor may be exhausted, retrying...")
-        time.sleep(2)
-    else:
-        raise RuntimeError(
-            f"no samples returned after {max_retries} retries — "
-            "check that the data server is running and data exists"
-        )
+    global _leftover_cache
 
-    # Separate categories and token lists
-    categories = [cat for cat, _ in samples]
-    token_lists = [tokens for _, tokens in samples]
+    samples = []
+    while _leftover_cache and len(samples) < batch_size:
+        samples.append(_leftover_cache.pop())
+
+    need = batch_size - len(samples)
+    if need > 0:
+        max_retries = 300
+        for attempt in range(max_retries):
+            fresh = get_next_samples(need)
+            if fresh:
+                break
+            if attempt == 0:
+                print("WARNING: no samples returned — cursor may be exhausted, retrying...")
+            time.sleep(2)
+        else:
+            raise RuntimeError(
+                f"no samples returned after {max_retries} retries — "
+                "check that the data server is running and data exists"
+            )
+        samples.extend(fresh)
+
+    categories = []
+    token_lists = []
+    for cat, tokens in samples:
+        if len(tokens) > block_size + 1:
+            if len(_leftover_cache) < MAX_CACHE_SIZE:
+                _leftover_cache.append((cat, tokens[block_size:]))
+            else:
+                print(f"WARNING: leftover cache full ({MAX_CACHE_SIZE}), discarding tail of sample")
+            tokens = tokens[:block_size + 1]
+        if len(tokens) < 4:
+            continue
+        token_lists.append(tokens)
+        categories.append(cat)
+
+    if len(token_lists) == 0:
+        tok = torch.zeros(1, block_size, dtype=torch.long)
+        return tok.to(DEVICE), torch.full_like(tok, -100)
 
     x = torch.full((len(token_lists), block_size), 0, dtype=torch.long)
     y = torch.full((len(token_lists), block_size), -100, dtype=torch.long)
     for i, (tokens, cat_id) in enumerate(zip(token_lists, categories)):
-        tokens = tokens[: block_size + 1]
-        if len(tokens) < 4:
-            continue
         seq = torch.tensor(tokens, dtype=torch.long)
         n = min(len(tokens) - 1, block_size)
 

@@ -9,6 +9,24 @@ import time
 API = "http://localhost:8823"
 CACHE_DIR = "data/"
 
+def to_chatml(messages):
+    parts = []
+    for m in messages:
+        parts.append(f"<|im_start|>{m['role']}\n{m['content']}<|im_end|>")
+    return "\n".join(parts)
+
+def from_chatml(text):
+    messages = []
+    blocks = text.split("<|im_start|>")
+    for block in blocks:
+        block = block.strip()
+        if not block:
+            continue
+        block = block.replace("<|im_end|>", "").strip()
+        role, _, content = block.partition("\n")
+        messages.append({"role": role.strip(), "content": content.strip()})
+    return messages
+
 def getNextSample():
     COMMON_LANG = ["Python", "JavaScript", "C++", "Java", "C", "Go", "TypeScript", "Ruby", "Rust", "PHP", "Swift", "C#", "Kotlin", "Scala", "Dart", "Objective-C", "Perl", "Lua", "SQL", "HTML", "CSS", "JSON", "YAML", "Markdown", "XML"]
 
@@ -107,7 +125,76 @@ def getNextSample():
                 "category": "web",
             }
 
-    gens = [stack_v3_gen(), reasoning_gen(), manusagents_gen(), fineweb_gen(), code_instruction_gen(), open_math_gen()]
+    def code_feedback_gen():
+        ds = load_dataset("m-a-p/CodeFeedback-Filtered-Instruction", split="train", streaming=True, cache_dir=CACHE_DIR)
+        for repo in ds:
+            prompt = repo["query"]
+            response = repo["answer"]
+            lang = repo["lang"]
+            msg = to_chatml([{"role": "user", "content": prompt}, {"role": "assistant", "content": response}])
+            yield {
+                "text": msg,
+                "category": f"{lang}_instruction_code",
+            }
+
+    def nemotron_codealpaca_gen():
+        ds = load_dataset("JessieWei/GLM-5.2-FP8-nemotron-codealpaca", split="train", streaming=True, cache_dir=CACHE_DIR)
+        for repo in ds:
+            conversation = repo["conversations"]
+            msg = to_chatml(conversation)
+            yield {
+                "text": msg,
+                "category": "instruction_code_alpaca",
+            }
+
+    def code_gen():
+        ds = load_dataset("pengyunie/codesearchnet-codegen", split="train", streaming=True, cache_dir=CACHE_DIR)
+        for repo in ds:
+            problem = repo["problem"]
+            output = repo["output"]
+            lang = repo["language"]
+            msg = to_chatml([{"role": "user", "content": problem}, {"role": "assistant", "content": output}])
+            yield {
+                "text": msg,
+                "category": f"{lang}_instruction_code",
+            }
+
+    def tiny_codes_gen():
+        ds = load_dataset("nampdn-ai/tiny-codes", split="train", streaming=True, cache_dir=CACHE_DIR)
+        for repo in ds:
+            lang = repo["programming_language"]
+            problem = repo["prompt"]
+            response = repo["response"]
+            msg = to_chatml([{"role": "user", "content": problem}, {"role": "assistant", "content": response}])
+            yield {
+                "text": msg,
+                "category": f"{lang}_instruction_code",
+            }
+
+    def code_security_gen():
+        ds = load_dataset("ayshajavd/code-security-vulnerability-dataset", split="train", streaming=True, cache_dir=CACHE_DIR)
+        for repo in ds:
+            code = repo["code"]
+            is_vulnerable = repo["is_vulnerable"]
+            lang = repo["language"]
+            prompt = f"Fix the following {lang} code:\n{code}\n"
+            if is_vulnerable:
+                code_fix = repo["code_fixed"]
+                response = f"Fixed code:\n{code_fix}"
+                msg = to_chatml([{"role": "user", "content": prompt}, {"role": "assistant", "content": response}])
+                yield {
+                    "text": msg,
+                    "category": f"{lang}_instruction_code",
+                }
+            else:
+                response = f"The following {lang} code is not vulnerable"
+                msg = to_chatml([{"role": "user", "content": prompt}, {"role": "assistant", "content": response}])
+                yield {
+                    "text": msg,
+                    "category": f"{lang}_instruction_code",
+                }
+
+    gens = [stack_v3_gen(), reasoning_gen(), manusagents_gen(), fineweb_gen(), code_instruction_gen(), open_math_gen(), code_feedback_gen(), nemotron_codealpaca_gen(), code_gen(), tiny_codes_gen(), code_security_gen()]
     active = list(range(len(gens)))
 
     while active:
