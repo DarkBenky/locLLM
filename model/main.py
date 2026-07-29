@@ -2,6 +2,8 @@ import os
 
 os.environ.setdefault("PYTORCH_ALLOC_CONF", "expandable_segments:True")
 
+print(f"Running {os.path.basename(__file__)}")
+
 import random
 import time
 import math
@@ -22,7 +24,9 @@ except ImportError:
 
 from model import Transformer
 
-API = "http://localhost:8823"
+# API = "http://localhost:8823"  # for local testing
+API = "http://91.98.145.193:8823"
+
 TOKENIZER_MODEL_PATH = "../tok/tokenize/tokenizer_models/tokenizer.model"
 
 BLOCK_SIZE = 4096
@@ -31,7 +35,7 @@ DIM = 1024
 N_LAYERS = 26
 N_HEADS = 16
 
-RESUME_FROM_CHECKPOINT = True
+RESUME_FROM_CHECKPOINT = False
 
 MAX_STEPS = 1_000_000
 WARMUP_STEPS = 500
@@ -216,7 +220,7 @@ if __name__ == "__main__":
     if HAS_VISUALTORCH:
         try:
             dummy = torch.zeros(1, BLOCK_SIZE, dtype=torch.long).to(DEVICE)
-            graph = visualtorch.graph_view(model, dummy, style="flow")
+            graph = visualtorch.flow.flow_view(model, dummy)
             wandb.log({"model_architecture": wandb.Image(graph)})
             print("Logged model architecture diagram to wandb")
         except Exception as e:
