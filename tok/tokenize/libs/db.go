@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"sync"
@@ -377,6 +378,94 @@ func (d *DB) GetNextSamples(count int) ([][]byte, error) {
 
 	if _, err := tx.Exec("UPDATE cursor SET file_offset = ? WHERE id = 1", offset); err != nil {
 		return nil, fmt.Errorf("update cursor: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit tx: %w", err)
+	}
+
+	samples := make([][]byte, len(parsed))
+	for i, p := range parsed {
+		samples[i] = p.raw
+	}
+	return samples, nil
+}
+
+func (d *DB) GetRandomSamples(count int) ([][]byte, error) {
+	d.muDB.Lock()
+	var maxID int64
+	err := d.db.QueryRow("SELECT COALESCE(MAX(id), 0) FROM records").Scan(&maxID)
+	d.muDB.Unlock()
+	if err != nil {
+		return nil, fmt.Errorf("read max id: %w", err)
+	}
+	if maxID == 0 {
+		return nil, nil
+	}
+
+	d.muFile.Lock()
+	d.muDB.Lock()
+	defer d.muDB.Unlock()
+	defer d.muFile.Unlock()
+
+	type parsedRecord struct {
+		raw        []byte
+		category   uint8
+		tokenCount int
+	}
+
+	var parsed []parsedRecord
+	for i := 0; i < count; i++ {
+		randID := rand.Int63n(maxID) + 1
+		var offset int64
+		err := d.db.QueryRow(
+			"SELECT file_offset FROM records WHERE id >= ? LIMIT 1", randID,
+		).Scan(&offset)
+		if err != nil {
+			if err == sql.ErrNoRows {
+				continue
+			}
+			return nil, fmt.Errorf("query record offset: %w", err)
+		}
+
+		raw, cat, tokCount, _, err := readRecordAt(d.file, offset)
+		if err != nil {
+			return nil, fmt.Errorf("read record at %d: %w", offset, err)
+		}
+		parsed = append(parsed, parsedRecord{raw: raw, category: cat, tokenCount: int(tokCount)})
+	}
+
+	if len(parsed) == 0 {
+		return nil, nil
+	}
+
+	tx, err := d.db.Begin()
+	if err != nil {
+		return nil, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback()
+
+	servedByCategory := make(map[uint8][2]int)
+	for _, p := range parsed {
+		cur := servedByCategory[p.category]
+		cur[0]++
+		cur[1] += p.tokenCount
+		servedByCategory[p.category] = cur
+	}
+
+	for catID, counts := range servedByCategory {
+		if _, err := tx.Exec(
+			"INSERT OR IGNORE INTO served (category_id, served_count, served_token_count) VALUES (?, 0, 0)",
+			catID,
+		); err != nil {
+			return nil, fmt.Errorf("ensure served row for %d: %w", catID, err)
+		}
+		if _, err := tx.Exec(
+			"UPDATE served SET served_count = served_count + ?, served_token_count = served_token_count + ? WHERE category_id = ?",
+			counts[0], counts[1], catID,
+		); err != nil {
+			return nil, fmt.Errorf("update served for %d: %w", catID, err)
+		}
 	}
 
 	if err := tx.Commit(); err != nil {

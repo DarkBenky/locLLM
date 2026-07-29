@@ -36,6 +36,7 @@ N_LAYERS = 26
 N_HEADS = 16
 
 RESUME_FROM_CHECKPOINT = True
+RANDOM_SAMPLING = True
 
 MAX_STEPS = 1_000_000
 WARMUP_STEPS = 100
@@ -72,8 +73,8 @@ def decode_record(data: bytes) -> tuple[int, list[int]]:
 
 
 def get_next_samples(count: int) -> list[tuple[int, list[int]]]:
-    """Return list of (category_id, token_ids) pairs."""
-    res = requests.get(API + "/api/get-next-samples", params={"sample_count": count})
+    endpoint = "/api/get-next-samples-random" if RANDOM_SAMPLING else "/api/get-next-samples"
+    res = requests.get(API + endpoint, params={"sample_count": count})
     raw_samples = res.json().get("samples", [])
     return [decode_record(base64.b64decode(raw)) for raw in raw_samples]
 

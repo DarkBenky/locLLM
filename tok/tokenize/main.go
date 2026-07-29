@@ -126,6 +126,29 @@ func handleGetNextSamples(c *echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]interface{}{"samples": samples})
 }
 
+func handleGetNextSamplesRandom(c *echo.Context) error {
+	type Request struct {
+		SampleCount int `query:"sample_count"`
+	}
+
+	req := new(Request)
+	if err := c.Bind(req); err != nil {
+		return err
+	}
+	if req.SampleCount <= 0 {
+		req.SampleCount = 256
+	}
+
+	samples, err := db.GetRandomSamples(req.SampleCount)
+	if err != nil {
+		return err
+	}
+	if samples == nil {
+		samples = [][]byte{}
+	}
+	return c.JSON(http.StatusOK, map[string]interface{}{"samples": samples})
+}
+
 func handleGetCategoryIndex(c *echo.Context) error {
 	categoryStore.mu.Lock()
 	defer categoryStore.mu.Unlock()
@@ -155,6 +178,7 @@ func main() {
 
 	e.POST("/api/receive-data", handleReceiveData)
 	e.GET("/api/get-next-samples", handleGetNextSamples)
+	e.GET("/api/get-next-samples-random", handleGetNextSamplesRandom)
 	e.GET("/api/get-category-index", handleGetCategoryIndex)
 	e.POST("/api/reset-cursor", handleResetCursor)
 	e.GET("/api/stats", handleStats)
