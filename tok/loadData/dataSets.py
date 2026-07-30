@@ -2,12 +2,46 @@ import ast
 from datasets import load_dataset
 from pprint import pprint
 import requests
+from requests.exceptions import ConnectionError, Timeout, RequestException
 import os
 import json
 import time
+import random
 
 API = "http://localhost:8823"
 CACHE_DIR = "data/"
+CHECKPOINT_FILE = "checkpoint.json"
+
+
+def send_with_retry(url, payload, max_retries=5, base_delay=1.0):
+    for attempt in range(max_retries):
+        try:
+            res = requests.post(url, json=payload, timeout=30)
+            if res.status_code == 200:
+                return res
+            if res.status_code >= 500:
+                raise RequestException(f"HTTP {res.status_code}")
+            return res
+        except (ConnectionError, Timeout, RequestException) as e:
+            if attempt == max_retries - 1:
+                raise
+            delay = base_delay * (2 ** attempt) + random.uniform(0, 1)
+            print(f"[retry] attempt {attempt+1}/{max_retries} after {delay:.1f}s: {e}")
+            time.sleep(delay)
+    return None
+
+
+def load_checkpoint():
+    if os.path.exists(CHECKPOINT_FILE):
+        with open(CHECKPOINT_FILE) as f:
+            ckpt = json.load(f)
+            print(f"[checkpoint] resuming from iter={ckpt['iter']:_}, tokens={ckpt['tokens']:_}")
+            return ckpt
+    return None
+
+def save_checkpoint(_iter, tokenCount):
+    with open(CHECKPOINT_FILE, "w") as f:
+        json.dump({"iter": _iter, "tokens": tokenCount}, f)
 
 def to_chatml(messages):
     parts = []
@@ -207,21 +241,50 @@ def getNextSample():
 
 if __name__ == "__main__":
     gen = getNextSample()
+
+    ckpt = load_checkpoint()
+    start_iter = ckpt["iter"] if ckpt else 0
+    tokenCount = ckpt["tokens"] if ckpt else 0
     _iter = 0
-    tokenCount = 0
+
+    if start_iter > 0:
+        print(f"[checkpoint] skipping {start_iter:_} records...")
+        for _ in range(start_iter):
+            try:
+                next(gen)
+            except StopIteration:
+                break
+        print("[checkpoint] skip complete")
+
     lastUpdate = time.time()
+    lastTokenCount = tokenCount
+
     for rec in gen:
-        # pprint(rec)
-        # os._exit(0)
-        res = requests.post(API+"/api/receive-data", json=rec)
+        try:
+            res = send_with_retry(API + "/api/receive-data", rec)
+        except Exception as e:
+            print(f"[fatal] send failed after retries: {e}")
+            save_checkpoint(_iter + start_iter, tokenCount)
+            print(f"[checkpoint] saved at iter={_iter+start_iter:_}, tokens={tokenCount:_}")
+            raise
+
         if res.status_code != 200:
             continue
+
         tokenCount += res.json()["token_count"]
         _iter += 1
+
         if _iter % 16 == 0:
             now = time.time()
-            tokensPerSec = tokenCount / (now - lastUpdate)
+            delta_tokens = tokenCount - lastTokenCount
+            delta_time = now - lastUpdate
+            tokensPerSec = delta_tokens / delta_time if delta_time > 0 else 0
+            lastTokenCount = tokenCount
             lastUpdate = now
-            print(f"iter {_iter:_} tokenCount {tokenCount:_} tokensPerSec {tokensPerSec:.2f}")
-            # os._exit(0)
-    print("Done")
+            print(f"iter {_iter+start_iter:_} tokenCount {tokenCount:_} tokensPerSec {tokensPerSec:_.0f}")
+
+        if _iter % 1000 == 0:
+            save_checkpoint(_iter + start_iter, tokenCount)
+
+    save_checkpoint(_iter + start_iter, tokenCount)
+    print(f"Done — total iter={_iter+start_iter:_}, tokens={tokenCount:_}")
