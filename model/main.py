@@ -38,7 +38,7 @@ N_HEADS = 16
 RESUME_FROM_CHECKPOINT = True
 RANDOM_SAMPLING = True
 
-MAX_STEPS = 1_000_000
+MAX_STEPS = 150_000
 WARMUP_STEPS = 100
 MAX_LR = 3e-4
 MIN_LR = 3e-5
@@ -258,6 +258,9 @@ if __name__ == "__main__":
 
         x, y = make_batch(BATCH_SIZE, BLOCK_SIZE)
 
+        if (y == -100).all():
+            continue
+
         lr = get_lr(step)
         for group in optimizer.param_groups:
             group["lr"] = lr
@@ -270,7 +273,7 @@ if __name__ == "__main__":
         with torch.no_grad():
             preds = logits.argmax(dim=-1)
             mask = y != -100
-            acc = (preds[mask] == y[mask]).float().mean().item() if mask.any() else 0.0
+            acc = (preds[mask] == y[mask]).float().mean().item()
 
         optimizer.zero_grad(set_to_none=True)
         scaler.scale(loss).backward()
