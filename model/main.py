@@ -48,7 +48,8 @@ GRAD_CLIP = 1.0
 
 LOG_EVERY = 10
 CKPT_EVERY = 250
-CKPT_DIR = "/media/user/sda1/CKPT_DIR"
+# CKPT_DIR = "/media/user/sda1/CKPT_DIR"
+CKPT_DIR = "./checkpoints"
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
