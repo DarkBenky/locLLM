@@ -36,6 +36,7 @@ N_LAYERS = 26
 N_HEADS = 16
 
 RESUME_FROM_CHECKPOINT = True
+KEEP_CHECKPOINTS_COUNT = 2 # -1 or 0 to keep all, >0 to keep last N checkpoints, <0 to keep none
 RANDOM_SAMPLING = True
 
 MAX_STEPS = 150_000
@@ -300,3 +301,20 @@ if __name__ == "__main__":
             torch.save({"model": model.state_dict(), "optimizer": optimizer.state_dict(),
                         "step": step}, ckpt_path)
             print(f"saved checkpoint: {ckpt_path}")
+
+            if KEEP_CHECKPOINTS_COUNT == 0 or KEEP_CHECKPOINTS_COUNT == -1:
+                pass
+            elif KEEP_CHECKPOINTS_COUNT < 0:
+                for f in os.listdir(CKPT_DIR):
+                    if f.endswith(".pt"):
+                        os.remove(os.path.join(CKPT_DIR, f))
+                print(f"removed all checkpoints (KEEP_CHECKPOINTS_COUNT={KEEP_CHECKPOINTS_COUNT})")
+            else:
+                ckpts = sorted(
+                    [f for f in os.listdir(CKPT_DIR) if f.endswith(".pt")],
+                    key=lambda x: int(x.replace("step_", "").replace(".pt", "")),
+                )
+                while len(ckpts) > KEEP_CHECKPOINTS_COUNT:
+                    old = ckpts.pop(0)
+                    os.remove(os.path.join(CKPT_DIR, old))
+                    print(f"removed old checkpoint: {old}")
