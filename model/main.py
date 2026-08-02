@@ -196,6 +196,15 @@ def make_batch(batch_size: int, block_size: int) -> tuple[torch.Tensor, torch.Te
 
         is_code = cat_id in CODE_CATEGORY_IDS
         if is_code and random.random() < 0.5 and len(tokens) >= 64:
+            fim_cap = block_size - 3
+            if len(tokens) > fim_cap:
+                if len(_leftover_cache) < MAX_CACHE_SIZE:
+                    _leftover_cache.append((cat, tokens[fim_cap:]))
+                else:
+                    print(f"WARNING: leftover cache full ({MAX_CACHE_SIZE}), discarding tail of sample")
+                tokens = tokens[:fim_cap]
+                seq = torch.tensor(tokens, dtype=torch.long)
+
             pre_end = random.randint(len(tokens) // 4, 7 * len(tokens) // 10)
             mid_max = min(len(tokens) - pre_end - 4, len(tokens) // 4)
             mid_len = random.randint(4, max(5, mid_max))
@@ -215,7 +224,7 @@ def make_batch(batch_size: int, block_size: int) -> tuple[torch.Tensor, torch.Te
                 middle,
                 torch.tensor([FIM_END], dtype=torch.long),
             ])
-            fim_n = min(len(fim_seq) - 1, block_size)
+            fim_n = len(fim_seq) - 1
             x[i, :fim_n] = fim_seq[:fim_n]
             mid_pos = len(prefix) + len(suffix) + 2
             if fim_n > mid_pos:
