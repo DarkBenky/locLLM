@@ -74,16 +74,53 @@ def decode_record(data: bytes) -> tuple[int, list[int]]:
     return category, tokens
 
 
+REQUEST_TIMEOUT = 30  # seconds
+MAX_REQUEST_RETRIES = 5
+_session = None
+
+
+def _get_session() -> requests.Session:
+    global _session
+    if _session is None:
+        _session = requests.Session()
+        adapter = requests.adapters.HTTPAdapter(
+            pool_connections=4, pool_maxsize=4, max_retries=0,
+        )
+        _session.mount("http://", adapter)
+        _session.mount("https://", adapter)
+    return _session
+
+
+def _request_with_retry(url: str, **kwargs) -> requests.Response:
+    """GET request with timeout and retry on transient network errors."""
+    kwargs.setdefault("timeout", REQUEST_TIMEOUT)
+    last_exc = None
+    for attempt in range(MAX_REQUEST_RETRIES):
+        try:
+            return _get_session().get(url, **kwargs)
+        except requests.exceptions.Timeout:
+            last_exc = f"timeout after {kwargs['timeout']}s"
+        except requests.exceptions.ConnectionError as e:
+            last_exc = str(e)
+        except requests.exceptions.RequestException as e:
+            last_exc = str(e)
+        if attempt < MAX_REQUEST_RETRIES - 1:
+            delay = 2 ** attempt
+            print(f"  request failed ({last_exc}), retrying in {delay}s (attempt {attempt + 2}/{MAX_REQUEST_RETRIES})...")
+            time.sleep(delay)
+    raise RuntimeError(f"request failed after {MAX_REQUEST_RETRIES} retries: {last_exc}")
+
+
 def get_next_samples(count: int) -> list[tuple[int, list[int]]]:
     endpoint = "/api/get-next-samples-random" if RANDOM_SAMPLING else "/api/get-next-samples"
-    res = requests.get(API + endpoint, params={"sample_count": count})
+    res = _request_with_retry(API + endpoint, params={"sample_count": count})
     raw_samples = res.json().get("samples", [])
     return [decode_record(base64.b64decode(raw)) for raw in raw_samples]
 
 
 def get_code_category_ids() -> set[int]:
     """Fetch category index from server and return IDs belonging to code."""
-    res = requests.get(API + "/api/get-category-index")
+    res = _request_with_retry(API + "/api/get-category-index")
     cat_map = res.json()
     code_names = {
         "Python", "JavaScript", "C++", "Java", "C", "Go", "TypeScript",
@@ -111,7 +148,16 @@ def make_batch(batch_size: int, block_size: int) -> tuple[torch.Tensor, torch.Te
     if need > 0:
         max_retries = 300
         for attempt in range(max_retries):
-            fresh = get_next_samples(need)
+            try:
+                fresh = get_next_samples(need)
+            except RuntimeError as e:
+                if attempt == 0:
+                    print(f"WARNING: get_next_samples failed: {e}")
+                if attempt < max_retries - 1:
+                    delay = min(60, 2 + 2 ** min(attempt, 6))
+                    time.sleep(delay)
+                    continue
+                raise
             if fresh:
                 break
             if attempt == 0:
