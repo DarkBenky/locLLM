@@ -199,8 +199,8 @@ td.num{text-align:right;font-variant-numeric:tabular-nums}
 <script>
 const allRows = Array.from(document.querySelectorAll("#tbody tr"));
 let currentSort = {col:2, dir:-1};
-function parseNum(s){s=s.replace(/[BMK,]/g,"");let m=1;if(s.endsWith("K")){s=s.slice(0,-1);m=1e3}else if(s.endsWith("M")){s=s.slice(0,-1);m=1e6}else if(s.endsWith("B")){s=s.slice(0,-1);m=1e9}return parseFloat(s)*m}
-function compare(a,b){let va=parseNum(a.cells[currentSort.col].textContent);let vb=parseNum(b.cells[currentSort.col].textContent);return (va-vb)*currentSort.dir}
+function parseNum(s){s=s.replace(/,/g,"");let m=1;if(s.endsWith("K")){s=s.slice(0,-1);m=1e3}else if(s.endsWith("M")){s=s.slice(0,-1);m=1e6}else if(s.endsWith("B")){s=s.slice(0,-1);m=1e9}return parseFloat(s)*m}
+function compare(a,b){if(currentSort.col===0){let va=a.cells[0].textContent.toLowerCase();let vb=b.cells[0].textContent.toLowerCase();return va<vb?-currentSort.dir:va>vb?currentSort.dir:0}let va=parseNum(a.cells[currentSort.col].textContent);let vb=parseNum(b.cells[currentSort.col].textContent);return (va-vb)*currentSort.dir}
 function sortTableCol(col){if(currentSort.col===col)currentSort.dir*=-1;else{currentSort.col=col;currentSort.dir=col>=1?-1:1}apply()}
 function sortTable(){let v=document.getElementById("sortBy").value;let m={tokens:2,samples:1,served:3,servedTok:4,name:0};currentSort.col=m[v]??2;currentSort.dir=v==="name"?1:-1;apply()}
 function filterTable(){apply()}
