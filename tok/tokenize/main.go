@@ -170,6 +170,14 @@ func handleStats(c *echo.Context) error {
 	return c.JSON(http.StatusOK, stats)
 }
 
+func handleStatsGUI(c *echo.Context) error {
+	stats, err := db.GetStats()
+	if err != nil {
+		return err
+	}
+	return c.HTML(http.StatusOK, libs.RenderStatsHTML(stats))
+}
+
 func main() {
 	e := echo.New()
 
@@ -182,6 +190,7 @@ func main() {
 	e.GET("/api/get-category-index", handleGetCategoryIndex)
 	e.POST("/api/reset-cursor", handleResetCursor)
 	e.GET("/api/stats", handleStats)
+	e.GET("/api/stats/gui", handleStatsGUI)
 	if err := e.Start(":8823"); err != nil {
 		log.Fatal(err)
 	}
