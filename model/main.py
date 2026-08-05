@@ -31,7 +31,7 @@ API = "http://91.98.145.193:8823"
 TOKENIZER_MODEL_PATH = "../tok/tokenize/tokenizer_models/tokenizer.model"
 
 BLOCK_SIZE = 4096
-BATCH_SIZE = 8
+BATCH_SIZE = 6
 DIM = 1024
 N_LAYERS = 26
 N_HEADS = 16
@@ -46,6 +46,7 @@ MAX_LR = 3e-4
 MIN_LR = 3e-5
 WEIGHT_DECAY = 0.1
 GRAD_CLIP = 1.0
+GRAD_ACCUM = 3
 
 LOG_EVERY = 10
 CKPT_EVERY = 250
@@ -208,7 +209,7 @@ def make_batch(batch_size: int, block_size: int) -> tuple[torch.Tensor, torch.Te
 
             pre_end = random.randint(len(tokens) // 4, 7 * len(tokens) // 10)
             mid_max = min(len(tokens) - pre_end - 4, len(tokens) // 4)
-            mid_len = random.randint(4, max(5, mid_max))
+            mid_len = random.randint(min(64, max(4, mid_max)), max(5, mid_max))
             mid_end = min(pre_end + mid_len, len(tokens))
 
             prefix = seq[:pre_end]
@@ -295,6 +296,7 @@ if __name__ == "__main__":
     wandb.login()
     wandb.init(project="locLMM", config={
         "vocab_size": VOCAB_SIZE, "block_size": BLOCK_SIZE, "batch_size": BATCH_SIZE,
+        "grad_accum": GRAD_ACCUM, "effective_batch_size": BATCH_SIZE * GRAD_ACCUM,
         "dim": DIM, "n_layers": N_LAYERS, "n_heads": N_HEADS,
         "max_lr": MAX_LR, "max_steps": MAX_STEPS, "params": n_params,
     })
@@ -311,30 +313,49 @@ if __name__ == "__main__":
     model.train()
     scaler = torch.amp.GradScaler(enabled=(DEVICE == "cuda"))
 
+    EMA_BETA = 0.01
+    ema_loss = ema_ppl = ema_acc = ema_grad = None
+
+    def _micro_step():
+        x, y = make_batch(BATCH_SIZE, BLOCK_SIZE)
+        if (y == -100).all():
+            return 0.0, 0.0, 0.0, 0
+        with torch.autocast(device_type="cuda", dtype=torch.float16, enabled=(DEVICE == "cuda")):
+            logits, _ = model(x)
+            loss = F.cross_entropy(logits.view(-1, logits.size(-1)), y.reshape(-1))
+        with torch.no_grad():
+            mask = y != -100
+            acc = (logits.argmax(dim=-1)[mask] == y[mask]).float().mean().item()
+        scaler.scale(loss / GRAD_ACCUM).backward()
+        loss_val = loss.item()
+        n_tok = mask.sum().item()
+        del logits, loss, mask, x, y
+        if DEVICE == "cuda":
+            torch.cuda.empty_cache()
+        return loss_val, math.exp(min(loss_val, 20)), acc, n_tok
+
     for step in range(start_step, MAX_STEPS):
         t0 = time.time()
 
-        x, y = make_batch(BATCH_SIZE, BLOCK_SIZE)
+        optimizer.zero_grad(set_to_none=True)
+        accum_loss = accum_ppl = accum_acc = 0.0
+        accum_tokens = accum_bytes = 0
 
-        if (y == -100).all():
+        for micro in range(GRAD_ACCUM):
+            l, p, a, n = _micro_step()
+            accum_loss += l
+            accum_ppl += p
+            accum_acc += a * n
+            accum_tokens += n
+            accum_bytes += n
+
+        if accum_bytes == 0:
             continue
 
         lr = get_lr(step)
         for group in optimizer.param_groups:
             group["lr"] = lr
 
-        with torch.autocast(device_type="cuda", dtype=torch.float16, enabled=(DEVICE == "cuda")):
-            logits, _ = model(x)
-            loss = F.cross_entropy(logits.view(-1, logits.size(-1)), y.reshape(-1))
-
-        ppl = math.exp(loss.item())
-        with torch.no_grad():
-            preds = logits.argmax(dim=-1)
-            mask = y != -100
-            acc = (preds[mask] == y[mask]).float().mean().item()
-
-        optimizer.zero_grad(set_to_none=True)
-        scaler.scale(loss).backward()
         scaler.unscale_(optimizer)
         grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), GRAD_CLIP)
         scaler.step(optimizer)
@@ -343,15 +364,36 @@ if __name__ == "__main__":
         if DEVICE == "cuda":
             torch.cuda.synchronize()
         dt = time.time() - t0
-        tok_per_sec = (BATCH_SIZE * BLOCK_SIZE) / dt
+
+        cur_loss = accum_loss / GRAD_ACCUM
+        cur_ppl = accum_ppl / GRAD_ACCUM
+        cur_acc = accum_acc / max(accum_tokens, 1)
+        cur_grad = grad_norm.item()
+        tok_per_sec = accum_bytes / max(dt, 1e-6)
+        tokens_seen = accum_bytes
+
+        if ema_loss is None:
+            ema_loss = cur_loss
+            ema_ppl = cur_ppl
+            ema_acc = cur_acc
+            ema_grad = cur_grad
+        else:
+            ema_loss = EMA_BETA * cur_loss + (1 - EMA_BETA) * ema_loss
+            ema_ppl = EMA_BETA * cur_ppl + (1 - EMA_BETA) * ema_ppl
+            ema_acc = EMA_BETA * cur_acc + (1 - EMA_BETA) * ema_acc
+            ema_grad = EMA_BETA * cur_grad + (1 - EMA_BETA) * ema_grad
 
         if step % LOG_EVERY == 0:
-            print(f"step {step:6d} | loss {loss.item():.4f} | ppl {ppl:.1f} | "
-                  f"acc {acc:.3f} | lr {lr:.2e} | "
-                  f"grad_norm {grad_norm:.2f} | {tok_per_sec:.0f} tok/s")
-            wandb.log({"loss": loss.item(), "ppl": ppl, "acc": acc, "lr": lr,
-                        "grad_norm": grad_norm.item(),
-                        "tok_per_sec": tok_per_sec}, step=step)
+            print(f"step {step:6d} | loss {cur_loss:.4f} | ppl {cur_ppl:.1f} | "
+                  f"acc {cur_acc:.3f} | lr {lr:.2e} | "
+                  f"grad_norm {cur_grad:.2f} | {tok_per_sec:.0f} tok/s | "
+                  f"ema_loss {ema_loss:.4f} | ema_ppl {ema_ppl:.1f} | "
+                  f"ema_acc {ema_acc:.3f} | ema_grad {ema_grad:.2f}")
+            wandb.log({"loss": cur_loss, "ppl": cur_ppl, "acc": cur_acc, "lr": lr,
+                        "grad_norm": cur_grad,
+                        "tok_per_sec": tok_per_sec, "tokens_seen": tokens_seen,
+                        "ema_loss": ema_loss, "ema_ppl": ema_ppl, "ema_acc": ema_acc,
+                        "ema_grad": ema_grad}, step=step)
 
         if step > 0 and step % CKPT_EVERY == 0:
             ckpt_path = f"{CKPT_DIR}/step_{step}.pt"

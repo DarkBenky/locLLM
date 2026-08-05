@@ -3,6 +3,7 @@ package libs
 import (
 	"database/sql"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"math/rand"
@@ -12,6 +13,8 @@ import (
 
 	_ "github.com/mattn/go-sqlite3"
 )
+
+var errRecordPastEOF = errors.New("record extends past EOF")
 
 type DB struct {
 	muDB     sync.Mutex
@@ -35,6 +38,8 @@ type StatsResult struct {
 	CategoryServedTokCount map[string]int  `json:"category_served_tok_count"`
 	CurrentFileIndex       int64           `json:"current_file_index"`
 }
+
+const maxRecordSize = 4 * 1024 * 1024
 
 const schema = `
 CREATE TABLE IF NOT EXISTS categories (
@@ -334,7 +339,7 @@ func (d *DB) GetNextSamples(count int) ([][]byte, error) {
 		}
 		raw, cat, tokCount, nextOff, err := readRecordAt(d.file, offset)
 		if err != nil {
-			if err == io.EOF || err == io.ErrUnexpectedEOF {
+			if err == io.EOF || err == io.ErrUnexpectedEOF || err == errRecordPastEOF {
 				break
 			}
 			return nil, fmt.Errorf("read record at %d: %w", offset, err)
@@ -430,6 +435,9 @@ func (d *DB) GetRandomSamples(count int) ([][]byte, error) {
 
 		raw, cat, tokCount, _, err := readRecordAt(d.file, offset)
 		if err != nil {
+			if err == errRecordPastEOF || err == io.EOF || err == io.ErrUnexpectedEOF {
+				continue
+			}
 			return nil, fmt.Errorf("read record at %d: %w", offset, err)
 		}
 		parsed = append(parsed, parsedRecord{raw: raw, category: cat, tokenCount: int(tokCount)})
@@ -522,6 +530,17 @@ func readRecordAt(file *os.File, offset int64) (raw []byte, category uint8, toke
 		return nil, 0, 0, 0, fmt.Errorf("read record size: %w", err)
 	}
 	recordSize := binary.LittleEndian.Uint64(sizeBuf[:])
+	if recordSize < 1 || recordSize > maxRecordSize {
+		return nil, 0, 0, 0, fmt.Errorf("invalid record size: %d", recordSize)
+	}
+
+	fi, err := file.Stat()
+	if err != nil {
+		return nil, 0, 0, 0, fmt.Errorf("stat file: %w", err)
+	}
+	if offset+8+int64(recordSize) > fi.Size() {
+		return nil, 0, 0, 0, errRecordPastEOF
+	}
 
 	payload := make([]byte, recordSize)
 	if _, err := io.ReadFull(file, payload); err != nil {
@@ -529,9 +548,6 @@ func readRecordAt(file *os.File, offset int64) (raw []byte, category uint8, toke
 	}
 
 	category = payload[0]
-	if recordSize < 1 {
-		return nil, 0, 0, 0, fmt.Errorf("invalid record size: %d", recordSize)
-	}
 	tokenCount = uint32((recordSize - 1) / 2)
 
 	raw = make([]byte, 8+recordSize)
