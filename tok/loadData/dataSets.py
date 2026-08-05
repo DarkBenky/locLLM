@@ -64,11 +64,13 @@ def from_chatml(text):
 def getNextSample():
     COMMON_LANG = ["Python", "JavaScript", "C++", "Java", "C", "Go", "TypeScript", "Ruby", "Rust", "PHP", "Swift", "C#", "Kotlin", "Scala", "Dart", "Objective-C", "Perl", "Lua", "SQL", "HTML", "CSS", "JSON", "YAML", "Markdown", "XML"]
 
-    def stack_v3_gen():
+    def stack_v3_gen(supported_langs=None):
         ds = load_dataset("HuggingFaceCode/stack-v3-train", split="train", streaming=True, cache_dir=CACHE_DIR)
         for repo in ds:
             try:
                 for f in repo["files"]:
+                    if supported_langs is not None and f["language"] not in supported_langs:
+                        continue
                     category = f["language"]
                     if f["language"] not in COMMON_LANG:
                         category = "OtherLanguage"
