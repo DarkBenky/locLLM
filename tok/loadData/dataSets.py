@@ -66,10 +66,14 @@ def getNextSample():
 
     def stack_v3_gen(supported_langs=None):
         ds = load_dataset("HuggingFaceCode/stack-v3-train", split="train", streaming=True, cache_dir=CACHE_DIR)
+        if isinstance(supported_langs, str):
+            supported_langs = {s.strip().lower() for s in supported_langs.split(",")}
+        elif supported_langs is not None:
+            supported_langs = {s.strip().lower() for s in supported_langs}
         for repo in ds:
             try:
                 for f in repo["files"]:
-                    if supported_langs is not None and f["language"] not in supported_langs:
+                    if supported_langs is not None and f["language"].lower() not in supported_langs:
                         continue
                     category = f["language"]
                     if f["language"] not in COMMON_LANG:
@@ -262,7 +266,10 @@ def getNextSample():
 
     # gens = [stack_v3_gen(), reasoning_gen(), manusagents_gen(), fineweb_gen(), code_instruction_gen(), open_math_gen(), code_feedback_gen(), nemotron_codealpaca_gen(), code_gen(), tiny_codes_gen(), code_security_gen()]
     # gens = [stack_v3_gen(), code_feedback_gen(), nemotron_codealpaca_gen(), code_gen(), tiny_codes_gen(), code_security_gen()]
-    gens = [stack_v3_gen()]
+    
+    langs = "Python, C, Go, Golang"
+    
+    gens = [stack_v3_gen(supported_langs=langs)]
     active = list(range(len(gens)))
 
     while active:
