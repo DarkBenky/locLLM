@@ -40,7 +40,7 @@ RESUME_FROM_CHECKPOINT = True
 KEEP_CHECKPOINTS_COUNT = 2 # -1 or 0 to keep all, >0 to keep last N checkpoints, <0 to keep none
 RANDOM_SAMPLING = True
 
-MAX_STEPS = 150_000
+MAX_STEPS = 500_000
 WARMUP_STEPS = 100
 MAX_LR = 3e-4
 MIN_LR = 3e-5
@@ -68,6 +68,8 @@ def decode_record(data: bytes) -> tuple[int, list[int]]:
     record_size = struct.unpack_from("<Q", data, 0)[0]
     category = data[8]
     token_count = (record_size - 1) // 2
+    if 9 + 2 * token_count > len(data):
+        raise ValueError(f"record size mismatch: header={record_size} data={len(data)}")
     tokens = []
     offset = 9
     for _ in range(token_count):
@@ -339,17 +341,20 @@ if __name__ == "__main__":
 
         optimizer.zero_grad(set_to_none=True)
         accum_loss = accum_ppl = accum_acc = 0.0
-        accum_tokens = accum_bytes = 0
+        accum_tokens = 0
+        micros_done = 0
 
         for micro in range(GRAD_ACCUM):
             l, p, a, n = _micro_step()
+            if n == 0:
+                continue
+            micros_done += 1
             accum_loss += l
             accum_ppl += p
             accum_acc += a * n
             accum_tokens += n
-            accum_bytes += n
 
-        if accum_bytes == 0:
+        if accum_tokens == 0:
             continue
 
         lr = get_lr(step)
@@ -365,12 +370,12 @@ if __name__ == "__main__":
             torch.cuda.synchronize()
         dt = time.time() - t0
 
-        cur_loss = accum_loss / GRAD_ACCUM
-        cur_ppl = accum_ppl / GRAD_ACCUM
+        cur_loss = accum_loss / max(micros_done, 1)
+        cur_ppl = accum_ppl / max(micros_done, 1)
         cur_acc = accum_acc / max(accum_tokens, 1)
         cur_grad = grad_norm.item()
-        tok_per_sec = accum_bytes / max(dt, 1e-6)
-        tokens_seen = accum_bytes
+        tok_per_sec = accum_tokens / max(dt, 1e-6)
+        tokens_seen = accum_tokens
 
         if ema_loss is None:
             ema_loss = cur_loss

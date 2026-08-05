@@ -340,6 +340,7 @@ func (d *DB) GetNextSamples(count int) ([][]byte, error) {
 		raw, cat, tokCount, nextOff, err := readRecordAt(d.file, offset)
 		if err != nil {
 			if err == io.EOF || err == io.ErrUnexpectedEOF || err == errRecordPastEOF {
+				offset = fileSize
 				break
 			}
 			return nil, fmt.Errorf("read record at %d: %w", offset, err)

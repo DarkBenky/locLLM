@@ -67,41 +67,53 @@ def getNextSample():
     def stack_v3_gen():
         ds = load_dataset("HuggingFaceCode/stack-v3-train", split="train", streaming=True, cache_dir=CACHE_DIR)
         for repo in ds:
-            for f in repo["files"]:
-                category = f["language"]
-                if f["language"] not in COMMON_LANG:
-                    category = "OtherLanguage"
-                yield {
-                    "category": category,
-                    "text": f["content"],
-                }
+            try:
+                for f in repo["files"]:
+                    category = f["language"]
+                    if f["language"] not in COMMON_LANG:
+                        category = "OtherLanguage"
+                    yield {
+                        "category": category,
+                        "text": f["content"],
+                    }
+            except:
+                continue
 
     def reasoning_gen():
         ds = load_dataset("SupraLabs/reasoning-corpus-4K-5M-v1", split="train", streaming=True, cache_dir=CACHE_DIR)
         for repo in ds:
-            yield {
-                "text": repo["ChatML"],
-                "category": "reasoning",
-            }
+            try:
+                yield {
+                    "text": repo["ChatML"],
+                    "category": "reasoning",
+                }
+            except:
+                continue
 
     def code_instruction_gen():
         ds = load_dataset("TokenBender/code_instructions_122k_alpaca_style", split="train", streaming=True, cache_dir=CACHE_DIR)
         for repo in ds:
-            yield {
-                "text": repo["text"],
-                "category": "instruction_code",
-            }
+            try:
+                yield {
+                    "text": repo["text"],
+                    "category": "instruction_code",
+                }
+            except:
+                continue
 
     def open_math_gen():
         ds = load_dataset("nvidia/OpenMathInstruct-2", split="train", streaming=True, cache_dir=CACHE_DIR)
         for repo in ds:
-            problem = repo["problem"]
-            solution = repo["generated_solution"]
-            _text = f"Problem: {problem}\nSolution: {solution}"
-            yield {
-                "text": _text,
-                "category": "math",
-            }
+            try:
+                problem = repo["problem"]
+                solution = repo["generated_solution"]
+                _text = f"Problem: {problem}\nSolution: {solution}"
+                yield {
+                    "text": _text,
+                    "category": "math",
+                }
+            except:
+                continue
 
     def manusagents_gen():
         ds = load_dataset(
@@ -152,81 +164,99 @@ def getNextSample():
     def fineweb_gen():
         ds = load_dataset("m-a-p/FineFineWeb", split="train", streaming=True, cache_dir=CACHE_DIR)
         for repo in ds:
-            if repo["language_score"] < 0.75:
+            try:
+                if repo["language_score"] < 0.75:
+                    continue
+                yield {
+                    "text": repo["text"],
+                    "category": "web",
+                }
+            except:
                 continue
-            yield {
-                "text": repo["text"],
-                "category": "web",
-            }
 
     def code_feedback_gen():
         ds = load_dataset("m-a-p/CodeFeedback-Filtered-Instruction", split="train", streaming=True, cache_dir=CACHE_DIR)
         for repo in ds:
-            prompt = repo["query"]
-            response = repo["answer"]
-            lang = repo["lang"]
-            msg = to_chatml([{"role": "user", "content": prompt}, {"role": "assistant", "content": response}])
-            yield {
-                "text": msg,
-                "category": f"{lang}_instruction_code",
-            }
+            try:
+                prompt = repo["query"]
+                response = repo["answer"]
+                lang = repo["lang"]
+                msg = to_chatml([{"role": "user", "content": prompt}, {"role": "assistant", "content": response}])
+                yield {
+                    "text": msg,
+                    "category": f"{lang}_instruction_code",
+                }
+            except:
+                continue
 
     def nemotron_codealpaca_gen():
         ds = load_dataset("JessieWei/GLM-5.2-FP8-nemotron-codealpaca", split="train", streaming=True, cache_dir=CACHE_DIR)
         for repo in ds:
-            conversation = repo["conversations"]
-            msg = to_chatml(conversation)
-            yield {
-                "text": msg,
-                "category": "instruction_code_alpaca",
-            }
+            try:
+                conversation = repo["conversations"]
+                msg = to_chatml(conversation)
+                yield {
+                    "text": msg,
+                    "category": "instruction_code_alpaca",
+                }
+            except:
+                continue
 
     def code_gen():
         ds = load_dataset("pengyunie/codesearchnet-codegen", split="train", streaming=True, cache_dir=CACHE_DIR)
         for repo in ds:
-            problem = repo["problem"]
-            output = repo["output"]
-            lang = repo["language"]
-            msg = to_chatml([{"role": "user", "content": problem}, {"role": "assistant", "content": output}])
-            yield {
-                "text": msg,
-                "category": f"{lang}_instruction_code",
-            }
+            try:
+                problem = repo["problem"]
+                output = repo["output"]
+                lang = repo["language"]
+                msg = to_chatml([{"role": "user", "content": problem}, {"role": "assistant", "content": output}])
+                yield {
+                    "text": msg,
+                    "category": f"{lang}_instruction_code",
+                }
+            except:
+                continue
 
     def tiny_codes_gen():
         ds = load_dataset("nampdn-ai/tiny-codes", split="train", streaming=True, cache_dir=CACHE_DIR)
         for repo in ds:
-            lang = repo["programming_language"]
-            problem = repo["prompt"]
-            response = repo["response"]
-            msg = to_chatml([{"role": "user", "content": problem}, {"role": "assistant", "content": response}])
-            yield {
-                "text": msg,
-                "category": f"{lang}_instruction_code",
-            }
+            try:
+                lang = repo["programming_language"]
+                problem = repo["prompt"]
+                response = repo["response"]
+                msg = to_chatml([{"role": "user", "content": problem}, {"role": "assistant", "content": response}])
+                yield {
+                    "text": msg,
+                    "category": f"{lang}_instruction_code",
+                }
+            except:
+                continue
 
     def code_security_gen():
         ds = load_dataset("ayshajavd/code-security-vulnerability-dataset", split="train", streaming=True, cache_dir=CACHE_DIR)
         for repo in ds:
-            code = repo["code"]
-            is_vulnerable = repo["is_vulnerable"]
-            lang = repo["language"]
-            prompt = f"Fix the following {lang} code:\n{code}\n"
-            if is_vulnerable:
-                code_fix = repo["code_fixed"]
-                response = f"Fixed code:\n{code_fix}"
-                msg = to_chatml([{"role": "user", "content": prompt}, {"role": "assistant", "content": response}])
-                yield {
-                    "text": msg,
-                    "category": f"{lang}_instruction_code",
-                }
-            else:
-                response = f"The following {lang} code is not vulnerable"
-                msg = to_chatml([{"role": "user", "content": prompt}, {"role": "assistant", "content": response}])
-                yield {
-                    "text": msg,
-                    "category": f"{lang}_instruction_code",
-                }
+            try:
+                code = repo["code"]
+                is_vulnerable = repo["is_vulnerable"]
+                lang = repo["language"]
+                prompt = f"Fix the following {lang} code:\n{code}\n"
+                if is_vulnerable:
+                    code_fix = repo["code_fixed"]
+                    response = f"Fixed code:\n{code_fix}"
+                    msg = to_chatml([{"role": "user", "content": prompt}, {"role": "assistant", "content": response}])
+                    yield {
+                        "text": msg,
+                        "category": f"{lang}_instruction_code",
+                    }
+                else:
+                    response = f"The following {lang} code is not vulnerable"
+                    msg = to_chatml([{"role": "user", "content": prompt}, {"role": "assistant", "content": response}])
+                    yield {
+                        "text": msg,
+                        "category": f"{lang}_instruction_code",
+                    }
+            except:
+                continue
 
     # gens = [stack_v3_gen(), reasoning_gen(), manusagents_gen(), fineweb_gen(), code_instruction_gen(), open_math_gen(), code_feedback_gen(), nemotron_codealpaca_gen(), code_gen(), tiny_codes_gen(), code_security_gen()]
     # gens = [stack_v3_gen(), code_feedback_gen(), nemotron_codealpaca_gen(), code_gen(), tiny_codes_gen(), code_security_gen()]
