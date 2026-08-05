@@ -24,6 +24,7 @@ except ImportError:
     HAS_VISUALTORCH = False
 
 from model import Transformer
+from checkpoint_sample import record_raw_tokens, run_checkpoint_sample
 
 # API = "http://localhost:8823"  # for local testing
 API = "http://91.98.145.193:8823"
@@ -185,6 +186,7 @@ def make_batch(batch_size: int, block_size: int) -> tuple[torch.Tensor, torch.Te
             tokens = tokens[:block_size + 1]
         if len(tokens) < 4:
             continue
+        record_raw_tokens(tokens)
         token_lists.append(tokens)
         categories.append(cat)
 
@@ -318,6 +320,13 @@ if __name__ == "__main__":
     EMA_BETA = 0.01
     ema_loss = ema_ppl = ema_acc = ema_grad = None
 
+    def _ema_update(ema, cur, beta=EMA_BETA):
+        if cur is None or not math.isfinite(cur):
+            return ema
+        if ema is None or not math.isfinite(ema):
+            return cur
+        return beta * cur + (1 - beta) * ema
+
     def _micro_step():
         x, y = make_batch(BATCH_SIZE, BLOCK_SIZE)
         if (y == -100).all():
@@ -374,19 +383,16 @@ if __name__ == "__main__":
         cur_ppl = accum_ppl / max(micros_done, 1)
         cur_acc = accum_acc / max(accum_tokens, 1)
         cur_grad = grad_norm.item()
+        if not math.isfinite(cur_grad):
+            print(f"WARNING: step {step}: non-finite grad_norm={cur_grad} — "
+                  f"GradScaler likely skipped this step; ema_grad update skipped")
         tok_per_sec = accum_tokens / max(dt, 1e-6)
         tokens_seen = accum_tokens
 
-        if ema_loss is None:
-            ema_loss = cur_loss
-            ema_ppl = cur_ppl
-            ema_acc = cur_acc
-            ema_grad = cur_grad
-        else:
-            ema_loss = EMA_BETA * cur_loss + (1 - EMA_BETA) * ema_loss
-            ema_ppl = EMA_BETA * cur_ppl + (1 - EMA_BETA) * ema_ppl
-            ema_acc = EMA_BETA * cur_acc + (1 - EMA_BETA) * ema_acc
-            ema_grad = EMA_BETA * cur_grad + (1 - EMA_BETA) * ema_grad
+        ema_loss = _ema_update(ema_loss, cur_loss)
+        ema_ppl = _ema_update(ema_ppl, cur_ppl)
+        ema_acc = _ema_update(ema_acc, cur_acc)
+        ema_grad = _ema_update(ema_grad, cur_grad)
 
         if step % LOG_EVERY == 0:
             print(f"step {step:6d} | loss {cur_loss:.4f} | ppl {cur_ppl:.1f} | "
@@ -405,6 +411,7 @@ if __name__ == "__main__":
             torch.save({"model": model.state_dict(), "optimizer": optimizer.state_dict(),
                         "step": step}, ckpt_path)
             print(f"saved checkpoint: {ckpt_path}")
+            run_checkpoint_sample(step, model, sp, BLOCK_SIZE, DEVICE)
 
             if KEEP_CHECKPOINTS_COUNT == 0 or KEEP_CHECKPOINTS_COUNT == -1:
                 pass
