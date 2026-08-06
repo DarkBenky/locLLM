@@ -113,9 +113,8 @@ class Transformer(nn.Module):
         B, T = idx.shape
         assert T <= self.max_seq_len, f"sequence length {T} exceeds max_seq_len {self.max_seq_len}"
  
-        rope_dtype = torch.float16 if torch.is_autocast_enabled() else self.tok_emb.weight.dtype
         cos, sin = build_rope_cache(T, self.head_dim, base=self.rope_base,
-                                     device=idx.device, dtype=rope_dtype)
+                                     device=idx.device, dtype=torch.float32)
  
         x = self.tok_emb(idx)
         for block in self.blocks:

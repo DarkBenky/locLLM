@@ -32,7 +32,7 @@ API = "http://91.98.145.193:8823"
 TOKENIZER_MODEL_PATH = "../tok/tokenize/tokenizer_models/tokenizer.model"
 
 BLOCK_SIZE = 4096
-BATCH_SIZE = 6
+BATCH_SIZE = 7
 DIM = 1024
 N_LAYERS = 26
 N_HEADS = 16
@@ -55,6 +55,18 @@ CKPT_EVERY = 250
 CKPT_DIR = "./checkpoints"
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+
+PRECISION = "bf16"
+
+if DEVICE == "cuda" and PRECISION == "bf16":
+    AUTOCAST_DTYPE = torch.bfloat16
+    USE_SCALER = False
+elif DEVICE == "cuda":
+    AUTOCAST_DTYPE = torch.float16
+    USE_SCALER = True
+else:
+    AUTOCAST_DTYPE = torch.float32
+    USE_SCALER = False
 
 sp = spm.SentencePieceProcessor(model_file=TOKENIZER_MODEL_PATH)
 VOCAB_SIZE = sp.get_piece_size() + 4  # +4 reserved FIM sentinel slots
@@ -315,7 +327,7 @@ if __name__ == "__main__":
             print(f"visualtorch graph failed: {e}")
 
     model.train()
-    scaler = torch.amp.GradScaler(enabled=(DEVICE == "cuda"))
+    scaler = torch.amp.GradScaler(enabled=USE_SCALER)
 
     EMA_BETA = 0.01
     ema_loss = ema_ppl = ema_acc = ema_grad = None
@@ -331,7 +343,7 @@ if __name__ == "__main__":
         x, y = make_batch(BATCH_SIZE, BLOCK_SIZE)
         if (y == -100).all():
             return 0.0, 0.0, 0.0, 0
-        with torch.autocast(device_type="cuda", dtype=torch.float16, enabled=(DEVICE == "cuda")):
+        with torch.autocast(device_type="cuda", dtype=AUTOCAST_DTYPE, enabled=(DEVICE == "cuda")):
             logits, _ = model(x)
             loss = F.cross_entropy(logits.view(-1, logits.size(-1)), y.reshape(-1))
         with torch.no_grad():
