@@ -18,12 +18,6 @@ import torch
 import torch.nn.functional as F
 import wandb
 
-try:
-    import visualtorch
-    HAS_VISUALTORCH = True
-except ImportError:
-    HAS_VISUALTORCH = False
-
 from model import Transformer
 from checkpoint_sample import record_raw_tokens, run_checkpoint_sample
 
@@ -407,15 +401,6 @@ if __name__ == "__main__":
         "lr_decay_steps": LR_DECAY_STEPS, "params": n_params,
     })
 
-    if HAS_VISUALTORCH:
-        try:
-            dummy = torch.zeros(1, BLOCK_SIZE, dtype=torch.long).to(DEVICE)
-            graph = visualtorch.flow.flow_view(model, dummy)
-            wandb.log({"model_architecture": wandb.Image(graph)})
-            print("Logged model architecture diagram to wandb")
-        except Exception as e:
-            print(f"visualtorch graph failed: {e}")
-
     model.train()
     scaler = torch.amp.GradScaler(enabled=USE_SCALER)
 
@@ -495,6 +480,7 @@ if __name__ == "__main__":
         wandb.log({"eval_loss": val, "eval_ppl": math.exp(min(val, 20))}, step=step)
 
     build_eval_set()
+    torch.cuda.empty_cache()
 
     for step in range(start_step, MAX_STEPS):
         if UPSCALED and step - start_step == WAKEUP_STEPS:
