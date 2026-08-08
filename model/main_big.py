@@ -88,6 +88,13 @@ def _step_from_name(f):
     return int(re.search(r"\d+", f).group())
 
 
+def _load_ckpt(path):
+    try:
+        return torch.load(path, map_location="cpu", mmap=True)
+    except TypeError:
+        return torch.load(path, map_location="cpu")
+
+
 def upscale_into(model, old_sd, old_n_layers):
     big_sd = {}
     for k, v in old_sd.items():
@@ -318,14 +325,15 @@ if __name__ == "__main__":
         print(tokens[:20])
         print(sp.decode(tokens)[:200])
 
+    print("building model (128 layers, ~1.6B params) ...", flush=True)
     model = Transformer(vocab_size=VOCAB_SIZE, dim=DIM, n_layers=N_LAYERS, n_heads=N_HEADS,
                          max_seq_len=BLOCK_SIZE).to(DEVICE)
     if MODEL_DTYPE != torch.float32:
         model.to(MODEL_DTYPE)
-    print(f"model dtype: {MODEL_DTYPE}")
+    print(f"model dtype: {MODEL_DTYPE}", flush=True)
 
     n_params = sum(p.numel() for p in model.parameters())
-    print(f"device: {DEVICE} | params: {n_params / 1e6:.1f}M")
+    print(f"device: {DEVICE} | params: {n_params / 1e6:.1f}M", flush=True)
 
     decay, no_decay = [], []
     for name, p in model.named_parameters():
@@ -345,8 +353,8 @@ if __name__ == "__main__":
         normal_ckpts = sorted([f for f in all_pt if f.startswith("step_") and not f.startswith(CKPT_PREFIX)], key=_step_from_name)
         if big_ckpts:
             latest = os.path.join(CKPT_DIR, big_ckpts[-1])
-            print(f"Loading big checkpoint: {latest}")
-            ckpt = torch.load(latest, map_location="cpu", mmap=True)
+            print(f"Loading big checkpoint: {latest}", flush=True)
+            ckpt = _load_ckpt(latest)
             sd = ckpt["model"]
             ckpt_layers = 1 + max(int(k.split(".")[1]) for k in sd if k.startswith("blocks."))
             if ckpt_layers != N_LAYERS:
@@ -358,8 +366,8 @@ if __name__ == "__main__":
             print(f"Resuming from step {start_step}")
         elif normal_ckpts:
             latest = os.path.join(CKPT_DIR, normal_ckpts[-1])
-            print(f"Loading normal checkpoint: {latest}")
-            ckpt = torch.load(latest, map_location="cpu", mmap=True)
+            print(f"Loading normal checkpoint: {latest}", flush=True)
+            ckpt = _load_ckpt(latest)
             sd = ckpt["model"]
             ckpt_layers = 1 + max(int(k.split(".")[1]) for k in sd if k.startswith("blocks."))
             if UPSCALE_ON_RESUME and ckpt_layers < N_LAYERS:
