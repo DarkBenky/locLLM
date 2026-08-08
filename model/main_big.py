@@ -304,7 +304,7 @@ def make_batch(batch_size: int, block_size: int) -> tuple[torch.Tensor, torch.Te
 def get_lr(step: int, step0: int = 0) -> float:
     s = step - step0
     if UPSCALED and s < WAKEUP_STEPS:
-        return WAKEUP_LR * (s + 1) / WARMUP_STEPS
+        return WAKEUP_LR * min((s + 1) / WARMUP_STEPS, 1.0)
     s = s - WAKEUP_STEPS
     if s < WARMUP_STEPS:
         return MAX_LR * (s + 1) / WARMUP_STEPS
