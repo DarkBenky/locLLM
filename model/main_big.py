@@ -2,8 +2,11 @@ from __future__ import annotations
 import os
 
 os.environ.setdefault("PYTORCH_ALLOC_CONF", "expandable_segments:True")
+os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 
-print(f"Running {os.path.basename(__file__)}")
+import torch
+
+print(f"Running {os.path.basename(__file__)} (torch {torch.__version__})")
 
 import random
 import re
@@ -14,7 +17,6 @@ import base64
 
 import requests
 import sentencepiece as spm
-import torch
 import torch.nn.functional as F
 import wandb
 
