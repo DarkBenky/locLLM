@@ -301,14 +301,17 @@ def get_lr(step: int, step0: int = 0) -> float:
     s = step - step0
     if UPSCALED and s < WAKEUP_STEPS:
         return WAKEUP_LR * min((s + 1) / WARMUP_STEPS, 1.0)
-    s = s - WAKEUP_STEPS
+    if UPSCALED:
+        s = s - WAKEUP_STEPS
     if s < WARMUP_STEPS:
-        return MAX_LR * (s + 1) / WARMUP_STEPS
-    if s >= LR_DECAY_STEPS:
-        return MIN_LR
-    decay_ratio = (s - WARMUP_STEPS) / (LR_DECAY_STEPS - WARMUP_STEPS)
-    coeff = 0.5 * (1 + math.cos(math.pi * decay_ratio))
-    return MIN_LR + coeff * (MAX_LR - MIN_LR)
+        lr = MAX_LR * (s + 1) / WARMUP_STEPS
+    elif s >= LR_DECAY_STEPS:
+        lr = MIN_LR
+    else:
+        decay_ratio = (s - WARMUP_STEPS) / (LR_DECAY_STEPS - WARMUP_STEPS)
+        coeff = 0.5 * (1 + math.cos(math.pi * decay_ratio))
+        lr = MIN_LR + coeff * (MAX_LR - MIN_LR)
+    return max(0.0, lr)
 
 
 if __name__ == "__main__":
