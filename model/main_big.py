@@ -362,6 +362,8 @@ if __name__ == "__main__":
             model.load_state_dict(sd)
             if "optimizer" in ckpt:
                 optimizer.load_state_dict(ckpt["optimizer"])
+            else:
+                UPSCALED = True
             start_step = ckpt["step"] + 1
             print(f"Resuming from step {start_step}")
         elif normal_ckpts:
