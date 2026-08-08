@@ -32,7 +32,7 @@ API = "http://91.98.145.193:8823"
 TOKENIZER_MODEL_PATH = "../tok/tokenize/tokenizer_models/tokenizer.model"
 
 BLOCK_SIZE = 4096
-BATCH_SIZE = 6
+BATCH_SIZE = 4
 GRAD_ACCUM = 3
 DIM = 1024
 N_LAYERS = 128
@@ -434,8 +434,11 @@ if __name__ == "__main__":
         with torch.autocast(device_type="cuda", dtype=AUTOCAST_DTYPE, enabled=(DEVICE == "cuda")):
             logits, _ = model(x)
             loss = F.cross_entropy(logits.view(-1, logits.size(-1)), y.reshape(-1))
+        scaler.scale(loss / GRAD_ACCUM).backward()
+        loss_val = loss.item()
         with torch.no_grad():
             mask = y != -100
+            n_tok = mask.sum().item()
             acc = (logits.argmax(dim=-1)[mask] == y[mask]).float().mean().item()
             per_row = F.cross_entropy(
                 logits.view(-1, logits.size(-1)), y.reshape(-1), reduction="none",
@@ -448,10 +451,7 @@ if __name__ == "__main__":
                 wl, nt = cat_stats.get(key, (0.0, 0))
                 rc = int(row_counts[j].item())
                 cat_stats[key] = (wl + row_loss[j].item() * rc, nt + rc)
-        scaler.scale(loss / GRAD_ACCUM).backward()
-        loss_val = loss.item()
-        n_tok = mask.sum().item()
-        del logits, loss, mask, x, y
+        del logits, loss, mask, per_row, x, y
         return loss_val, math.exp(min(loss_val, 20)), acc, n_tok, cat_stats
 
     eval_set = []
