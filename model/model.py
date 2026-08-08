@@ -114,7 +114,7 @@ class Transformer(nn.Module):
         assert T <= self.max_seq_len, f"sequence length {T} exceeds max_seq_len {self.max_seq_len}"
  
         cos, sin = build_rope_cache(T, self.head_dim, base=self.rope_base,
-                                     device=idx.device, dtype=torch.float32)
+                                     device=idx.device, dtype=self.tok_emb.weight.dtype)
  
         x = self.tok_emb(idx)
         for block in self.blocks:
