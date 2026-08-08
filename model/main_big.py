@@ -81,7 +81,6 @@ VOCAB_SIZE = sp.get_piece_size() + 4
 FIM_PRE, FIM_SUF, FIM_MID, FIM_END = sp.get_piece_size(), sp.get_piece_size() + 1, sp.get_piece_size() + 2, sp.get_piece_size() + 3
 
 UPSCALED = False
-WAKEUP_START = None
 CKPT_PREFIX = "step_big_"
 
 
@@ -303,14 +302,10 @@ def make_batch(batch_size: int, block_size: int) -> tuple[torch.Tensor, torch.Te
 
 
 def get_lr(step: int, step0: int = 0) -> float:
-    if UPSCALED and WAKEUP_START is not None:
-        wake_end = WAKEUP_START + WAKEUP_STEPS
-        if step < wake_end:
-            elapsed = step - WAKEUP_START
-            return WAKEUP_LR * min((elapsed + 1) / WARMUP_STEPS, 1.0)
-        s = step - wake_end
-    else:
-        s = step - step0
+    s = step - step0
+    if UPSCALED and s < WAKEUP_STEPS:
+        return WAKEUP_LR * min((s + 1) / WARMUP_STEPS, 1.0)
+    s = s - WAKEUP_STEPS
     if s < WARMUP_STEPS:
         return MAX_LR * (s + 1) / WARMUP_STEPS
     if s >= LR_DECAY_STEPS:
@@ -365,15 +360,11 @@ if __name__ == "__main__":
             if ckpt_layers != N_LAYERS:
                 raise RuntimeError(f"big checkpoint {latest} has {ckpt_layers} layers, expected {N_LAYERS}")
             model.load_state_dict(sd)
-            start_step = ckpt["step"] + 1
             if "optimizer" in ckpt:
                 optimizer.load_state_dict(ckpt["optimizer"])
-                if ckpt.get("wakeup_start") is not None:
-                    UPSCALED = True
-                    WAKEUP_START = ckpt["wakeup_start"]
             else:
                 UPSCALED = True
-                WAKEUP_START = ckpt.get("wakeup_start", start_step)
+            start_step = ckpt["step"] + 1
             print(f"Resuming from step {start_step}")
         elif normal_ckpts:
             latest = os.path.join(CKPT_DIR, normal_ckpts[-1])
@@ -386,11 +377,10 @@ if __name__ == "__main__":
                 upscale_into(model, sd, ckpt_layers)
                 UPSCALED = True
                 start_step = ckpt["step"] + 1
-                WAKEUP_START = start_step
                 big_path = f"{CKPT_DIR}/{CKPT_PREFIX}{start_step - 1}.pt"
                 new_sd = model.state_dict()
                 del ckpt, sd
-                torch.save({"model": new_sd, "step": start_step - 1, "wakeup_start": WAKEUP_START}, big_path)
+                torch.save({"model": new_sd, "step": start_step - 1}, big_path)
                 print(f"Saved upscaled big checkpoint: {big_path}")
             else:
                 model.load_state_dict(sd)
@@ -401,11 +391,11 @@ if __name__ == "__main__":
         else:
             print("No checkpoint found, starting from scratch")
 
-    if UPSCALED and WAKEUP_START is not None and start_step < WAKEUP_START + WAKEUP_STEPS:
+    if UPSCALED:
         for i in range(0, 2 * OLD_N_LAYERS, 2):
             for p in model.blocks[i].parameters():
                 p.requires_grad = False
-        print(f"Wake-up phase: old blocks frozen ({WAKEUP_START + WAKEUP_STEPS - start_step} steps remaining)")
+        print(f"Wake-up phase: old blocks frozen for {WAKEUP_STEPS} steps")
 
     wandb.login()
     wandb.init(project="locLMM", config={
@@ -507,7 +497,7 @@ if __name__ == "__main__":
     build_eval_set()
 
     for step in range(start_step, MAX_STEPS):
-        if UPSCALED and WAKEUP_START is not None and step == WAKEUP_START + WAKEUP_STEPS:
+        if UPSCALED and step - start_step == WAKEUP_STEPS:
             for i in range(0, 2 * OLD_N_LAYERS, 2):
                 for p in model.blocks[i].parameters():
                     p.requires_grad = True
@@ -582,7 +572,7 @@ if __name__ == "__main__":
         if step > 0 and step % CKPT_EVERY == 0:
             ckpt_path = f"{CKPT_DIR}/{CKPT_PREFIX}{step}.pt"
             torch.save({"model": model.state_dict(), "optimizer": optimizer.state_dict(),
-                        "step": step, "wakeup_start": WAKEUP_START}, ckpt_path)
+                        "step": step}, ckpt_path)
             print(f"saved checkpoint: {ckpt_path}")
             run_checkpoint_sample(step, model, sp, BLOCK_SIZE, DEVICE)
 
