@@ -8,7 +8,6 @@ import torch
 
 print(f"Running {os.path.basename(__file__)} (torch {torch.__version__})")
 
-import copy
 import random
 import re
 import time
@@ -139,16 +138,20 @@ def resize_vocab_embeddings(model, old_sd, old_vocab):
 
 
 def _splice_optimizer(old_opt_sd, model, optimizer, old_vocab):
-    sd = copy.deepcopy(old_opt_sd)
     grouped = []
     for g in optimizer.param_groups:
         grouped.extend(g["params"])
     emb_idx = next(i for i, p in enumerate(grouped) if p is model.tok_emb.weight)
+    state = dict(old_opt_sd["state"])
+    emb_state = dict(state[emb_idx])
     for key in ("exp_avg", "exp_avg_sq"):
-        t = sd["state"][emb_idx][key]
+        t = state[emb_idx][key]
         padded = torch.zeros(VOCAB_SIZE, *t.shape[1:], dtype=t.dtype)
         padded[:old_vocab] = t
-        sd["state"][emb_idx][key] = padded
+        emb_state[key] = padded
+    state[emb_idx] = emb_state
+    sd = dict(old_opt_sd)
+    sd["state"] = state
     return sd
 
 
