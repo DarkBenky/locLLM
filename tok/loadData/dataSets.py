@@ -613,6 +613,26 @@ def getNextSample():
                 }
             except:
                 continue
+
+    def x_coder_gen(max_chars=12000):
+        ds = load_dataset("IIGroup/X-Coder-SFT-376k", split="unique_prompt_202k",
+                          streaming=True, cache_dir=CACHE_DIR)
+        for repo in ds:
+            try:
+                query = repo.get("query") or ""
+                response = repo.get("response") or ""
+                if not query or not response:
+                    continue
+                if len(query) + len(response) > max_chars:
+                    continue
+                msg = to_chatml([{"role": "user", "content": query},
+                                 {"role": "assistant", "content": response}])
+                yield {
+                    "text": msg,
+                    "category": "x_coder",
+                }
+            except:
+                continue
     
     # gens = [stack_v3_gen(), reasoning_gen(), manusagents_gen(), fineweb_gen(), code_instruction_gen(), open_math_gen(), code_feedback_gen(), nemotron_codealpaca_gen(), code_gen(), tiny_codes_gen(), code_security_gen()]
     # gens = [stack_v3_gen(), code_feedback_gen(), nemotron_codealpaca_gen(), code_gen(), tiny_codes_gen(), code_security_gen()]
@@ -641,6 +661,7 @@ def getNextSample():
         fineweb_gen(),
         bigvul_gen(),
         commitpackft_gen(),
+        x_coder_gen(),
     ]
 
     active = list(range(len(gens)))
