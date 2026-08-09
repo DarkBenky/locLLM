@@ -25,6 +25,7 @@ except ImportError:
 
 from model import Transformer
 from checkpoint_sample import record_raw_tokens, run_checkpoint_sample
+import chatml
 
 # API = "http://localhost:8823"  # for local testing
 API = "http://91.98.145.193:8823"
@@ -48,6 +49,7 @@ MIN_LR = 3e-5
 LR_DECAY_STEPS = 250_000  # cosine decays to MIN_LR by this step (faster than MAX_STEPS)
 WEIGHT_DECAY = 0.1
 GRAD_CLIP = 1.0
+CHATML_MASK_PROB = 0.8
 GRAD_ACCUM = 3
 
 LOG_EVERY = 10
@@ -76,6 +78,8 @@ VOCAB_SIZE = sp.get_piece_size() + 4  # +4 reserved FIM sentinel slots
 
 # FIM sentinel token IDs (reserved, not in SentencePiece vocab — inserted manually during batch construction)
 FIM_PRE, FIM_SUF, FIM_MID, FIM_END = sp.get_piece_size(), sp.get_piece_size() + 1, sp.get_piece_size() + 2, sp.get_piece_size() + 3
+
+_CHATML = chatml.ChatMLDetector(sp)
 
 
 def decode_record(data: bytes) -> tuple[int, list[int]]:
@@ -237,6 +241,12 @@ def make_batch(batch_size: int, block_size: int) -> tuple[torch.Tensor, torch.Te
             n = min(len(tokens) - 1, block_size)
             x[i, :n] = seq[:n]
             y[i, :n] = seq[1:n + 1]
+            if CHATML_MASK_PROB > 0.0:
+                mt = _CHATML.mask_targets(tokens, n)
+                if mt is not None and random.random() < CHATML_MASK_PROB:
+                    y[i, :n] = torch.where(
+                        mt.to(seq.device), seq[1:n + 1],
+                        torch.full_like(seq[1:n + 1], -100))
             fim_flags.append(False)
             continue
 
@@ -411,6 +421,11 @@ if __name__ == "__main__":
             n = min(len(seq) - 1, BLOCK_SIZE)
             x[i, :n] = seq[:n]
             y[i, :n] = seq[1:n + 1]
+            mt = _CHATML.mask_targets(tokens, n)
+            if mt is not None:
+                y[i, :n] = torch.where(
+                    mt.to(seq.device), seq[1:n + 1],
+                    torch.full_like(seq[1:n + 1], -100))
         model.eval()
         with torch.autocast(device_type="cuda", dtype=AUTOCAST_DTYPE, enabled=(DEVICE == "cuda")):
             logits, _ = model(x)

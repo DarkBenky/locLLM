@@ -8,6 +8,7 @@ import torch
 
 print(f"Running {os.path.basename(__file__)} (torch {torch.__version__})")
 
+import copy
 import random
 import re
 import time
@@ -22,6 +23,7 @@ import wandb
 
 from model import Transformer
 from checkpoint_sample import record_raw_tokens, run_checkpoint_sample
+import chatml
 
 API = "http://91.98.145.193:8823"
 
@@ -37,18 +39,21 @@ N_HEADS = 16
 
 RESUME_FROM_CHECKPOINT = True
 UPSCALE_ON_RESUME = True
+VOCAB_RESIZE_ON_RESUME = True
 KEEP_CHECKPOINTS_COUNT = 1
 RANDOM_SAMPLING = True
 
 MAX_STEPS = 500_000
 WARMUP_STEPS = 100
 WAKEUP_STEPS = 3000
+VOCAB_WAKEUP_STEPS = 500
 WAKEUP_LR = 1e-4
 MAX_LR = 5e-5
 MIN_LR = 1e-5
 LR_DECAY_STEPS = 250_000
 WEIGHT_DECAY = 0.1
 GRAD_CLIP = 1.0
+CHATML_MASK_PROB = 0.8
 
 LOG_EVERY = 10
 CKPT_EVERY = 250
@@ -72,11 +77,20 @@ else:
     USE_SCALER = False
 
 sp = spm.SentencePieceProcessor(model_file=TOKENIZER_MODEL_PATH)
-VOCAB_SIZE = sp.get_piece_size() + 4
+BASE_VOCAB = sp.get_piece_size()
+VOCAB_SIZE = BASE_VOCAB + chatml.EXTRA_FIM + chatml.EXTRA_CHATML
 
-FIM_PRE, FIM_SUF, FIM_MID, FIM_END = sp.get_piece_size(), sp.get_piece_size() + 1, sp.get_piece_size() + 2, sp.get_piece_size() + 3
+FIM_PRE, FIM_SUF, FIM_MID, FIM_END = BASE_VOCAB, BASE_VOCAB + 1, BASE_VOCAB + 2, BASE_VOCAB + 3
+
+_CHATML = chatml.ChatMLDetector(sp)
+CHATML_IDS = chatml.reserved_ids(BASE_VOCAB)
+CHATML_IDS["start_core"] = sp.encode("<|im_start|>", out_type=int)[1:]
+CHATML_IDS["end_core"] = sp.encode("<|im_end|>", out_type=int)[1:]
+IM_START, IM_END = CHATML_IDS["im_start"], CHATML_IDS["im_end"]
+ROLE_ASSISTANT = CHATML_IDS["roles"]["assistant"]
 
 UPSCALED = False
+VOCAB_RESIZED = False
 CKPT_PREFIX = "step_big_"
 
 
@@ -108,6 +122,34 @@ def upscale_into(model, old_sd, old_n_layers):
             blk.attn.out_proj.weight.data.zero_()
             blk.ffn.w_down.weight.data.zero_()
     return missing, unexpected
+
+
+def resize_vocab_embeddings(model, old_sd, old_vocab):
+    new_sd = {}
+    for k, v in old_sd.items():
+        if k in ("tok_emb.weight", "lm_head.weight"):
+            w = torch.zeros(VOCAB_SIZE, DIM, dtype=v.dtype)
+            w[:old_vocab] = v
+            w[old_vocab:] = v.mean(dim=0, keepdim=True)
+            new_sd[k] = w
+        else:
+            new_sd[k] = v
+    missing, unexpected = model.load_state_dict(new_sd, strict=False)
+    return missing, unexpected
+
+
+def _splice_optimizer(old_opt_sd, model, optimizer, old_vocab):
+    sd = copy.deepcopy(old_opt_sd)
+    grouped = []
+    for g in optimizer.param_groups:
+        grouped.extend(g["params"])
+    emb_idx = next(i for i, p in enumerate(grouped) if p is model.tok_emb.weight)
+    for key in ("exp_avg", "exp_avg_sq"):
+        t = sd["state"][emb_idx][key]
+        padded = torch.zeros(VOCAB_SIZE, *t.shape[1:], dtype=t.dtype)
+        padded[:old_vocab] = t
+        sd["state"][emb_idx][key] = padded
+    return sd
 
 
 def decode_record(data: bytes) -> tuple[int, list[int]]:
@@ -263,10 +305,21 @@ def make_batch(batch_size: int, block_size: int) -> tuple[torch.Tensor, torch.Te
                 do_fim = False
 
         if not do_fim:
-            seq = torch.tensor(tokens, dtype=torch.long)
-            n = min(len(tokens) - 1, block_size)
+            headers, ends = _CHATML.analyze(tokens)
+            if headers:
+                toks = chatml.replace_markers(tokens, headers, ends, CHATML_IDS)
+                mt = torch.tensor(chatml.mask_from_ids(toks, CHATML_IDS)[1:], dtype=torch.bool)
+            else:
+                toks = tokens
+                mt = None
+            seq = torch.tensor(toks, dtype=torch.long)
+            n = min(len(toks) - 1, block_size)
             x[i, :n] = seq[:n]
             y[i, :n] = seq[1:n + 1]
+            if mt is not None and CHATML_MASK_PROB > 0.0 and random.random() < CHATML_MASK_PROB:
+                y[i, :n] = torch.where(
+                    mt[:n].to(seq.device), seq[1:n + 1],
+                    torch.full_like(seq[1:n + 1], -100))
             fim_flags.append(False)
             continue
 
@@ -299,10 +352,11 @@ def make_batch(batch_size: int, block_size: int) -> tuple[torch.Tensor, torch.Te
 
 def get_lr(step: int, step0: int = 0) -> float:
     s = step - step0
-    if UPSCALED and s < WAKEUP_STEPS:
+    wake = VOCAB_WAKEUP_STEPS if VOCAB_RESIZED else WAKEUP_STEPS
+    if (UPSCALED or VOCAB_RESIZED) and s < wake:
         return WAKEUP_LR * min((s + 1) / WARMUP_STEPS, 1.0)
-    if UPSCALED:
-        s = s - WAKEUP_STEPS
+    if UPSCALED or VOCAB_RESIZED:
+        s = s - wake
     if s < WARMUP_STEPS:
         lr = MAX_LR * (s + 1) / WARMUP_STEPS
     elif s >= LR_DECAY_STEPS:
@@ -358,11 +412,21 @@ if __name__ == "__main__":
             ckpt_layers = 1 + max(int(k.split(".")[1]) for k in sd if k.startswith("blocks."))
             if ckpt_layers != N_LAYERS:
                 raise RuntimeError(f"big checkpoint {latest} has {ckpt_layers} layers, expected {N_LAYERS}")
-            model.load_state_dict(sd)
-            if "optimizer" in ckpt:
-                optimizer.load_state_dict(ckpt["optimizer"])
+            ckpt_vocab = sd["tok_emb.weight"].shape[0]
+            if ckpt_vocab != VOCAB_SIZE:
+                if not VOCAB_RESIZE_ON_RESUME:
+                    raise RuntimeError(f"checkpoint {latest} has vocab {ckpt_vocab}, expected {VOCAB_SIZE}")
+                print(f"Resizing vocab {ckpt_vocab} -> {VOCAB_SIZE}", flush=True)
+                resize_vocab_embeddings(model, sd, ckpt_vocab)
+                VOCAB_RESIZED = True
+                if "optimizer" in ckpt:
+                    optimizer.load_state_dict(_splice_optimizer(ckpt["optimizer"], model, optimizer, ckpt_vocab))
             else:
-                UPSCALED = True
+                model.load_state_dict(sd)
+                if "optimizer" in ckpt:
+                    optimizer.load_state_dict(ckpt["optimizer"])
+                else:
+                    UPSCALED = True
             start_step = ckpt["step"] + 1
             print(f"Resuming from step {start_step}")
         elif normal_ckpts:
@@ -471,10 +535,21 @@ if __name__ == "__main__":
         x = torch.full((len(eval_set), BLOCK_SIZE), 0, dtype=torch.long, device=DEVICE)
         y = torch.full((len(eval_set), BLOCK_SIZE), -100, dtype=torch.long, device=DEVICE)
         for i, (cat, tokens) in enumerate(eval_set):
-            seq = torch.tensor(tokens, dtype=torch.long, device=DEVICE)
+            headers, ends = _CHATML.analyze(tokens)
+            if headers:
+                toks = chatml.replace_markers(tokens, headers, ends, CHATML_IDS)
+                mt = torch.tensor(chatml.mask_from_ids(toks, CHATML_IDS)[1:], dtype=torch.bool)
+            else:
+                toks = tokens
+                mt = None
+            seq = torch.tensor(toks, dtype=torch.long, device=DEVICE)
             n = min(len(seq) - 1, BLOCK_SIZE)
             x[i, :n] = seq[:n]
             y[i, :n] = seq[1:n + 1]
+            if mt is not None:
+                y[i, :n] = torch.where(
+                    mt[:n].to(seq.device), seq[1:n + 1],
+                    torch.full_like(seq[1:n + 1], -100))
         model.eval()
         with torch.autocast(device_type="cuda", dtype=AUTOCAST_DTYPE, enabled=(DEVICE == "cuda")):
             logits, _ = model(x)
