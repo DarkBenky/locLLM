@@ -1,4 +1,5 @@
 import ast
+import re
 from datasets import load_dataset
 from pprint import pprint
 import requests
@@ -8,7 +9,7 @@ import json
 import time
 import random
 
-API = "http://localhost:8823"
+API = "http://91.98.145.193:8823/"
 CACHE_DIR = "data/"
 CHECKPOINT_FILE = "checkpoint.json"
 
@@ -43,11 +44,111 @@ def save_checkpoint(_iter, tokenCount):
     with open(CHECKPOINT_FILE, "w") as f:
         json.dump({"iter": _iter, "tokens": tokenCount}, f)
 
-def to_chatml(messages):
+def to_chatml(messages, tools=None):
     parts = []
     for m in messages:
-        parts.append(f"<|im_start|>{m['role']}\n{m['content']}<|im_end|>")
+        role = m["role"]
+
+        if role == "system":
+            body = m["content"]
+            if tools:
+                body += (
+                    "\n\nYou have access to the following tools:\n"
+                    f"<tools>\n{json.dumps(tools, ensure_ascii=False)}\n</tools>\n\n"
+                    'To call a tool, respond with:\n<tool_call>\n'
+                    '{"name": "...", "arguments": {...}}\n</tool_call>'
+                )
+            parts.append(f"<|im_start|>system\n{body}<|im_end|>")
+
+        elif role == "assistant":
+            body = m.get("content", "")
+            if m.get("reasoning_content"):
+                body = f"<think>\n{m['reasoning_content']}\n</think>\n\n{body}"
+            if m.get("tool_calls"):
+                calls = "\n".join(
+                    "<tool_call>\n"
+                    + json.dumps({
+                        "name": c["function"]["name"],
+                        "arguments": json.loads(c["function"]["arguments"])
+                                     if isinstance(c["function"]["arguments"], str)
+                                     else c["function"]["arguments"],
+                    }, ensure_ascii=False)
+                    + "\n</tool_call>"
+                    for c in m["tool_calls"]
+                )
+                body = f"{body}\n{calls}" if body else calls
+            parts.append(f"<|im_start|>assistant\n{body}<|im_end|>")
+
+        elif role == "tool":
+            parts.append(f"<|im_start|>tool\n<tool_response>\n{m['content']}\n</tool_response><|im_end|>")
+
+        else:
+            parts.append(f"<|im_start|>{role}\n{m['content']}<|im_end|>")
+
     return "\n".join(parts)
+
+
+def build_chatml_segments(messages, tools=None):
+    segments = []
+
+    def turn(role, body, trainable):
+        segments.append((f"<|im_start|>{role}\n", False))
+        segments.append((body, trainable))
+        segments.append(("<|im_end|>\n", trainable))
+
+    for msg in messages:
+        role, trainable = msg["role"], msg.get("trainable", False)
+
+        if role == "system":
+            body = msg["content"]
+            if tools:
+                body += (
+                    "\n\nYou have access to the following tools:\n"
+                    f"<tools>\n{json.dumps(tools, ensure_ascii=False)}\n</tools>\n\n"
+                    'To call a tool, respond with:\n<tool_call>\n'
+                    '{"name": "...", "arguments": {...}}\n</tool_call>'
+                )
+            turn("system", body, False)
+
+        elif role == "user":
+            turn("user", msg["content"], False)
+
+        elif role == "assistant":
+            if msg.get("tool_calls"):
+                calls = "\n".join(
+                    "<tool_call>\n"
+                    + json.dumps({
+                        "name": c["function"]["name"],
+                        "arguments": json.loads(c["function"]["arguments"])
+                                     if isinstance(c["function"]["arguments"], str)
+                                     else c["function"]["arguments"],
+                    }, ensure_ascii=False)
+                    + "\n</tool_call>"
+                    for c in msg["tool_calls"]
+                )
+                turn("assistant", calls, trainable)
+            else:
+                body = msg["content"]
+                if msg.get("reasoning_content"):
+                    body = f"<think>\n{msg['reasoning_content']}\n</think>\n\n{body}"
+                turn("assistant", body, trainable)
+
+        elif role == "tool":
+            turn("tool", f"<tool_response>\n{msg['content']}\n</tool_response>", False)
+
+        else:
+            turn(role, msg["content"], False)
+
+    return segments
+
+
+def encode_example(segments, sp, ignore_index=-100):
+    ids, labels = [], []
+    for text, trainable in segments:
+        piece_ids = sp.encode(text, out_type=int)
+        ids.extend(piece_ids)
+        labels.extend(piece_ids if trainable else [ignore_index] * len(piece_ids))
+    return ids, labels
 
 def from_chatml(text):
     messages = []
@@ -60,6 +161,55 @@ def from_chatml(text):
         role, _, content = block.partition("\n")
         messages.append({"role": role.strip(), "content": content.strip()})
     return messages
+
+
+def parse_codealchemy(text):
+    messages = []
+    parts = re.split(r"\n(?=(?:User|Assistant):\n)", text)
+    for part in parts:
+        m = re.match(r"^(User|Assistant):\n(.*)$", part, re.S)
+        if not m:
+            continue
+        role = "user" if m.group(1) == "User" else "assistant"
+        content = m.group(2).strip()
+        if content:
+            messages.append({"role": role, "content": content})
+    return messages
+
+
+_swh_s3 = None
+_swh_cache = {}
+_swh_cache_max = 1024
+_swh_missing_warned = False
+
+def fetch_swh_source(blob_id):
+    global _swh_s3, _swh_missing_warned
+    if blob_id in _swh_cache:
+        return _swh_cache[blob_id]
+    try:
+        import gzip
+        import boto3
+        from botocore.config import Config
+        from botocore import UNSIGNED
+    except ImportError:
+        if not _swh_missing_warned:
+            _swh_missing_warned = True
+            print("[code-alchemy] boto3 not installed — code-dev/code-dialogue rows will be skipped (pip install boto3)")
+        return None
+    try:
+        if _swh_s3 is None:
+            _swh_s3 = boto3.client("s3", config=Config(signature_version=UNSIGNED))
+        obj = _swh_s3.get_object(Bucket="softwareheritage", Key=f"content/{blob_id}")
+        with gzip.GzipFile(fileobj=obj["Body"]) as f:
+            seed = f.read().decode("utf-8", errors="ignore")
+        if len(_swh_cache) >= _swh_cache_max:
+            _swh_cache.clear()
+        _swh_cache[blob_id] = seed
+        return seed
+    except Exception as e:
+        print(f"[code-alchemy] S3 fetch failed for {blob_id}: {e}")
+        return None
+
 
 def getNextSample():
     COMMON_LANG = ["Python", "JavaScript", "C++", "Java", "C", "Go", "TypeScript", "Ruby", "Rust", "PHP", "Swift", "C#", "Kotlin", "Scala", "Dart", "Objective-C", "Perl", "Lua", "SQL", "HTML", "CSS", "JSON", "YAML", "Markdown", "XML"]
@@ -264,12 +414,161 @@ def getNextSample():
             except:
                 continue
 
+    def small_talk_gen():
+        ds = load_dataset("HuggingFaceTB/smoltalk", "all", split="train", streaming=True, cache_dir=CACHE_DIR)
+        for repo in ds:
+            try:
+                msg = to_chatml(repo["messages"])
+                yield {
+                    "text": msg,
+                    "category": "small_talk",
+                }
+            except:
+                continue
+
+    def codealpha_gen():
+        ds = load_dataset("theblackcat102/evol-codealpaca-v1", split="train", streaming=True, cache_dir=CACHE_DIR)
+        for repo in ds:
+            try:
+                prompt = repo["instruction"]
+                response = repo["response"]
+                msg = to_chatml([{"role": "user", "content": prompt}, {"role": "assistant", "content": response}])
+                yield {
+                    "text": msg,
+                    "category": "instruction_code",
+                }
+            except:
+                continue
+
+    def ultrachat_gen():
+        ds = load_dataset("HuggingFaceH4/ultrachat_200k", split="train_gen", streaming=True, cache_dir=CACHE_DIR)
+        for repo in ds:
+            try:
+                msg = to_chatml(repo["messages"])
+                yield {
+                    "text": msg,
+                    "category": "ultrachat",
+                }
+            except:
+                continue
+
+    def evo_code_instruction_gen():
+        ds = load_dataset("nickrosh/Evol-Instruct-Code-80k-v1", split="train", streaming=True, cache_dir=CACHE_DIR)
+        for repo in ds:
+            try:
+                prompt = repo["instruction"]
+                response = repo["output"]
+                msg = to_chatml([{"role": "user", "content": prompt}, {"role": "assistant", "content": response}])
+                yield {
+                    "text": msg,
+                    "category": "instruction_code",
+                }
+            except:
+                continue
+
+    def distillation_qwen_kimi_glm_gen():
+        ds = load_dataset("r0b0tlab/qwen3.8-max-glm5.2-kimi-k3-distillation", "sft_balanced", streaming=True, cache_dir=CACHE_DIR)
+        for repo in ds:
+            try:
+                msgs = repo["messages_json"]
+                tools = repo.get("tools_json")
+                msg = to_chatml(msgs, tools=tools)
+                yield {
+                    "text": msg,
+                    "category": "instruction_code",
+                }
+            except:
+                continue
+
+    def code_alchemy_gen(configs=None):
+        if configs is None:
+            configs = ["code-enhance", "code-qa", "code-dev", "code-dialogue", "code-trace"]
+
+        streams = []
+        for c in configs:
+            try:
+                streams.append(iter(load_dataset("open-alchemy/code-alchemy", c, split="train", streaming=True, cache_dir=CACHE_DIR)))
+            except Exception as e:
+                print(f"[code-alchemy] skipping config {c}: {e}")
+
+        if not streams:
+            return
+
+        active = list(range(len(streams)))
+        while active:
+            for i in active[:]:
+                try:
+                    row = next(streams[i])
+                except StopIteration:
+                    active.remove(i)
+                    continue
+                try:
+                    text = row.get("text")
+                    if not text and row.get("text_with_placeholders"):
+                        seed = fetch_swh_source(row["blob_id"])
+                        if seed is None:
+                            continue
+                        text = row["text_with_placeholders"].replace("{{{REPLACE_WITH_BLOB_ID_SOURCE}}}", seed)
+                    if not text:
+                        continue
+                    parsed = parse_codealchemy(text)
+                    if parsed:
+                        text = to_chatml(parsed)
+                    if not text or not text.strip():
+                        continue
+                    yield {"text": text, "category": "code_alchemy"}
+                except:
+                    continue
+
+    def agent_trove_gen():
+        ds = load_dataset("open-thoughts/AgentTrove", split="train", streaming=True, cache_dir=CACHE_DIR)
+        for repo in ds:
+            try:
+                msgs = repo["conversations"]
+                msg = to_chatml(msgs)
+                yield {
+                    "text": msg,
+                    "category": "agent_trove",
+                }
+            except:
+                continue
+
+    def star_coder_gen():
+        ds = load_dataset("bigcode/starcoderdata", split="train", streaming=True, cache_dir=CACHE_DIR)
+        for repo in ds:
+            try:
+                content = repo["content"]
+                yield {
+                    "text": content,
+                    "category": "star_coder",
+                }
+            except:
+                continue
+    
     # gens = [stack_v3_gen(), reasoning_gen(), manusagents_gen(), fineweb_gen(), code_instruction_gen(), open_math_gen(), code_feedback_gen(), nemotron_codealpaca_gen(), code_gen(), tiny_codes_gen(), code_security_gen()]
     # gens = [stack_v3_gen(), code_feedback_gen(), nemotron_codealpaca_gen(), code_gen(), tiny_codes_gen(), code_security_gen()]
     
     langs = "Python, C, Go, Golang"
     
-    gens = [stack_v3_gen(supported_langs=langs)]
+    # gens = [stack_v3_gen(supported_langs=langs)]
+
+    gens = [
+        code_alchemy_gen(),
+        evo_code_instruction_gen(),
+        ultrachat_gen(),
+        distillation_qwen_kimi_glm_gen(),
+        codealpha_gen(),
+        small_talk_gen(),
+        code_security_gen(),
+        tiny_codes_gen(),
+        code_gen(),
+        nemotron_codealpaca_gen(),
+        code_feedback_gen(),
+        star_coder_gen(),
+        agent_trove_gen(),
+        stack_v3_gen(supported_langs=langs),
+    ]
+
     active = list(range(len(gens)))
 
     while active:
