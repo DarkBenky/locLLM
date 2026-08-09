@@ -236,7 +236,7 @@ def getNextSample():
                 continue
 
     def reasoning_gen():
-        ds = load_dataset("SupraLabs/reasoning-corpus-4K-5M-v1", split="train", streaming=True, cache_dir=CACHE_DIR)
+        ds = load_dataset("Qyrou/reasoning-corpus-4K-5M-v1", split="train", streaming=True, cache_dir=CACHE_DIR)
         for repo in ds:
             try:
                 yield {
@@ -250,13 +250,17 @@ def getNextSample():
         ds = load_dataset("TokenBender/code_instructions_122k_alpaca_style", split="train", streaming=True, cache_dir=CACHE_DIR)
         for repo in ds:
             try:
+                instruction = repo["instruction"]
+                output = repo["output"]
+                msg = to_chatml([{"role": "user", "content": instruction}, {"role": "assistant", "content": output}])
                 yield {
-                    "text": repo["text"],
+                    "text": msg,
                     "category": "instruction_code",
                 }
             except:
                 continue
 
+    # No need for this dataset we want only coding staff data
     def open_math_gen():
         ds = load_dataset("nvidia/OpenMathInstruct-2", split="train", streaming=True, cache_dir=CACHE_DIR)
         for repo in ds:
@@ -271,6 +275,8 @@ def getNextSample():
             except:
                 continue
 
+
+    # DO NOT USE
     def manusagents_gen():
         ds = load_dataset(
             "Manusagents/GPT-5.5-Gemini-3.1-Pro-Grok-4-Claude-Fable-5-Mythos-5-Qwen-3.7-Max-and-more-Distillation-Dataset",
@@ -321,7 +327,7 @@ def getNextSample():
         ds = load_dataset("m-a-p/FineFineWeb", split="train", streaming=True, cache_dir=CACHE_DIR)
         for repo in ds:
             try:
-                if repo["language_score"] < 0.75:
+                if repo["language_score"] < 0.85:
                     continue
                 yield {
                     "text": repo["text"],
@@ -345,6 +351,20 @@ def getNextSample():
             except:
                 continue
 
+    # Too much math
+    def glm_nemotron_codealpaca_gen():
+        ds = load_dataset("JessieWei/GLM-5.2-FP8-nemotron-codealpaca-thinking", split="train", streaming=True, cache_dir=CACHE_DIR)
+        for repo in ds:
+            try:
+                conversation = repo["conversations"]
+                msg = to_chatml(conversation)
+                yield {
+                    "text": msg,
+                    "category": "instruction_code_alpaca",
+                }
+            except:
+                continue
+    
     def nemotron_codealpaca_gen():
         ds = load_dataset("JessieWei/GLM-5.2-FP8-nemotron-codealpaca", split="train", streaming=True, cache_dir=CACHE_DIR)
         for repo in ds:
@@ -544,6 +564,55 @@ def getNextSample():
                 }
             except:
                 continue
+
+    def bigvul_gen():
+        ds = load_dataset("bstee615/bigvul", split="train", streaming=True, cache_dir=CACHE_DIR)
+        for repo in ds:
+            try:
+                func_after = repo["func_after"]
+                func_before = repo["func_before"]
+                commit_msg = repo.get("commit_message", "")
+                prompt = f"Fix the following vulnerable code:\n{func_before}\n"
+                response = f"Fixed code:\n{func_after}"
+                if commit_msg:
+                    response += f"\nExplanation:\n{commit_msg}"
+
+                msg = to_chatml([{"role": "user", "content": prompt}, {"role": "assistant", "content": response}])
+                yield {
+                    "text": msg,
+                    "category": "bigvul",
+                }
+            except:
+                continue
+
+    def commitpackft_gen(max_chars=10000):
+        ds = load_dataset(
+            "json",
+            data_files="hf://datasets/bigcode/commitpackft/data/*/data.jsonl",
+            split="train", streaming=True, cache_dir=CACHE_DIR,
+        )
+        for repo in ds:
+            try:
+                old = repo.get("old_contents") or ""
+                new = repo.get("new_contents") or ""
+                lang = repo.get("lang") or "Unknown"
+                subject = (repo.get("subject") or "").strip()
+                if not old or not new or old == new:
+                    continue
+                if len(old) + len(new) > max_chars:
+                    continue
+                prompt = f"Update the following {lang} code:\n{old}\n"
+                response = f"Updated code:\n{new}"
+                if subject:
+                    response += f"\n\nChange description: {subject}"
+
+                msg = to_chatml([{"role": "user", "content": prompt}, {"role": "assistant", "content": response}])
+                yield {
+                    "text": msg,
+                    "category": f"pack_commit",
+                }
+            except:
+                continue
     
     # gens = [stack_v3_gen(), reasoning_gen(), manusagents_gen(), fineweb_gen(), code_instruction_gen(), open_math_gen(), code_feedback_gen(), nemotron_codealpaca_gen(), code_gen(), tiny_codes_gen(), code_security_gen()]
     # gens = [stack_v3_gen(), code_feedback_gen(), nemotron_codealpaca_gen(), code_gen(), tiny_codes_gen(), code_security_gen()]
@@ -567,6 +636,11 @@ def getNextSample():
         star_coder_gen(),
         agent_trove_gen(),
         stack_v3_gen(supported_langs=langs),
+        reasoning_gen(),
+        code_instruction_gen(),
+        fineweb_gen(),
+        bigvul_gen(),
+        commitpackft_gen(),
     ]
 
     active = list(range(len(gens)))

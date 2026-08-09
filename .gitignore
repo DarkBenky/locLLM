@@ -5,3 +5,4 @@ tok/loadData/data/*.lock
 model/checkpoints/*.pt
 tok/loadData/__pycache__/dataSets.cpython-313.pyc
 .vscode/settings.json
+tok/loadData/checkpoint.json
