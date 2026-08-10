@@ -135,9 +135,13 @@ class Transformer(nn.Module):
         for _ in range(max_new_tokens):
             idx_cond = idx[:, -self.max_seq_len:]
             logits, _ = self(idx_cond)
-            logits = logits[:, -1, :] / temperature
-            probs = F.softmax(logits, dim=-1)
-            next_tok = torch.multinomial(probs, num_samples=1)
+            logits = logits[:, -1, :]
+            if temperature > 0:
+                logits = logits / temperature
+                probs = F.softmax(logits, dim=-1)
+                next_tok = torch.multinomial(probs, num_samples=1)
+            else:
+                next_tok = logits.argmax(dim=-1, keepdim=True)
             if stop is not None and int(next_tok.item()) in stop:
                 break
             idx = torch.cat([idx, next_tok], dim=1)

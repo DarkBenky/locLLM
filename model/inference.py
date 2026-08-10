@@ -92,6 +92,7 @@ class InferenceEngine:
         self.sp = spm.SentencePieceProcessor(model_file=TOKENIZER_MODEL_PATH)
         base = self.sp.get_piece_size()
         self.fim_pre, self.fim_suf, self.fim_mid, self.fim_end = base, base + 1, base + 2, base + 3
+        self.im_end = base + chatml.IM_END_OFF
         state = torch.load(ckpt_path, map_location="cpu", mmap=True)["model"]
         self.vocab_size = state["tok_emb.weight"].shape[0]
         self.n_layers = 1 + max(int(k.split(".")[1]) for k in state if k.startswith("blocks."))
@@ -173,10 +174,13 @@ class InferenceEngine:
         probs = probs / total
         return torch.multinomial(probs, num_samples=1, generator=gen).item()
 
-    def _decode_loop(self, last, pos, max_new_tokens, temperature, top_k, top_p, gen):
+    def _decode_loop(self, last, pos, max_new_tokens, temperature, top_k, top_p, gen, stop_tokens=None):
+        stop = set(stop_tokens) if stop_tokens else None
         for _ in range(max_new_tokens):
             logits = self._decode_step(last.unsqueeze(0), pos)
             tok = self._sample(logits, temperature, top_k, top_p, gen)
+            if stop is not None and tok in stop:
+                break
             yield tok
             last = torch.tensor([tok], dtype=torch.long, device=self.device)
             pos += 1
@@ -187,7 +191,7 @@ class InferenceEngine:
             extra={self.fim_pre: "", self.fim_suf: "",
                    self.fim_mid: "", self.fim_end: ""})
 
-    def generate(self, prompt_ids, max_new_tokens=256, temperature=1.0, top_k=0, top_p=1.0, seed=None):
+    def generate(self, prompt_ids, max_new_tokens=256, temperature=1.0, top_k=0, top_p=1.0, seed=None, stop_tokens=None):
         gen = None
         if seed is not None:
             gen = torch.Generator(device=self.device)
@@ -201,7 +205,7 @@ class InferenceEngine:
             self._prefill(prompt.unsqueeze(0))
             last = prompt[-1:].clone()
             pos = prompt.numel() - 1
-            yield from self._decode_loop(last, pos, max_new_tokens, temperature, top_k, top_p, gen)
+            yield from self._decode_loop(last, pos, max_new_tokens, temperature, top_k, top_p, gen, stop_tokens)
 
     def generate_fim(self, prefix_ids, suffix_ids, max_new_tokens=256, temperature=1.0,
                      top_k=0, top_p=1.0, seed=None):

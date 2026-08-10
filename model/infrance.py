@@ -60,7 +60,8 @@ def generate(req: GenerateRequest):
         with _lock:
             yield from sse_stream(
                 engine.generate(ids, req.max_tokens, req.temperature,
-                                req.top_k, req.top_p, req.seed)
+                                req.top_k, req.top_p, req.seed,
+                                stop_tokens={engine.fim_end, engine.im_end})
             )
 
     return StreamingResponse(stream(), media_type="text/event-stream")
