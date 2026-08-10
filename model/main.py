@@ -43,13 +43,14 @@ KEEP_CHECKPOINTS_COUNT = 2 # -1 or 0 to keep all, >0 to keep last N checkpoints,
 RANDOM_SAMPLING = True
 
 MAX_STEPS = 500_000
-WARMUP_STEPS = 100
+WARMUP_STEPS = 300
 MAX_LR = 1.5e-4
 MIN_LR = 3e-5
 LR_DECAY_STEPS = 250_000  # cosine decays to MIN_LR by this step (faster than MAX_STEPS)
 WEIGHT_DECAY = 0.1
 GRAD_CLIP = 1.0
 CHATML_MASK_PROB = 0.8
+FIM_RATIO = 0.8
 GRAD_ACCUM = 3
 
 LOG_EVERY = 10
@@ -147,12 +148,13 @@ def get_code_category_ids() -> set[int]:
     res = _request_with_retry(API + "/api/get-category-index")
     cat_map = res.json()
     code_names = {
-        "Python", "JavaScript", "C++", "Java", "C", "Go", "TypeScript",
-        "Ruby", "Rust", "PHP", "Swift", "C#", "Kotlin", "Scala", "Dart",
-        "Objective-C", "Perl", "Lua", "SQL", "HTML", "CSS", "JSON",
-        "YAML", "Markdown", "XML", "OtherLanguage",
+        "python", "javascript", "c++", "java", "c", "go", "typescript",
+        "ruby", "rust", "php", "swift", "c#", "kotlin", "scala", "dart",
+        "objective-c", "perl", "lua", "sql", "html", "css", "json",
+        "yaml", "markdown", "xml", "otherlanguage",
+        "star_coder",
     }
-    return {cid for name, cid in cat_map.items() if name in code_names}
+    return {cid for name, cid in cat_map.items() if name.strip().lower() in code_names}
 
 
 CODE_CATEGORY_IDS = set()
@@ -218,7 +220,7 @@ def make_batch(batch_size: int, block_size: int) -> tuple[torch.Tensor, torch.Te
     fim_flags = []
     for i, (tokens, cat_id) in enumerate(zip(token_lists, categories)):
         is_code = cat_id in CODE_CATEGORY_IDS
-        do_fim = is_code and random.random() < 0.5 and len(tokens) >= 64
+        do_fim = is_code and random.random() < FIM_RATIO and len(tokens) >= 64
 
         if do_fim:
             fim_cap = block_size - 3

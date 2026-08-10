@@ -633,7 +633,48 @@ def getNextSample():
                 }
             except:
                 continue
-    
+
+    def code_search_net_gen():
+        ds = load_dataset("code-search-net/code_search_net", "all", split="train", streaming=True, cache_dir=CACHE_DIR)
+        for repo in ds:
+            try:
+                func_name = repo.get("func_name") or ""
+                language = repo.get("language") or ""
+                func_documentation_string = repo.get("func_documentation_string") or ""
+
+                func_code_string = repo.get("func_code_string") or ""
+
+                if not func_name or not language or not func_documentation_string or not func_code_string:
+                    continue
+
+                prompt = f"Generate a function in {language} that meets the following requirements:\n" \
+                         f"Function Name: {func_name}\n" \
+                         f"Documentation: {func_documentation_string}\n"
+
+                msg = to_chatml([{"role": "user", "content": prompt},
+                                 {"role": "assistant", "content": func_code_string}])
+                yield {
+                    "text": msg,
+                    "category": f"{language}_instruction_code",
+                }
+            except:
+                continue
+
+    def code_search_net_raw_gen():
+            ds = load_dataset("code-search-net/code_search_net", "all", split="train", streaming=True, cache_dir=CACHE_DIR)
+            for repo in ds:
+                try:
+                    whole_func_string = repo.get("whole_func_string") or ""
+                    language = repo.get("language") or ""
+                    if not whole_func_string or not language:
+                        continue
+                    yield {
+                        "text": whole_func_string,
+                        "category": f"{language}"
+                    }
+                except:
+                    continue 
+                
     # gens = [stack_v3_gen(), reasoning_gen(), manusagents_gen(), fineweb_gen(), code_instruction_gen(), open_math_gen(), code_feedback_gen(), nemotron_codealpaca_gen(), code_gen(), tiny_codes_gen(), code_security_gen()]
     # gens = [stack_v3_gen(), code_feedback_gen(), nemotron_codealpaca_gen(), code_gen(), tiny_codes_gen(), code_security_gen()]
     
@@ -662,6 +703,8 @@ def getNextSample():
         bigvul_gen(),
         commitpackft_gen(),
         x_coder_gen(),
+        code_search_net_gen(),
+        code_search_net_raw_gen(),
     ]
 
     active = list(range(len(gens)))
@@ -684,8 +727,10 @@ if __name__ == "__main__":
 
     if start_iter > 0:
         print(f"[checkpoint] skipping {start_iter:_} records...")
-        for _ in range(start_iter):
+        for i in range(start_iter):
             try:
+                if i % 1024 == 0:
+                    print(f"[checkpoint] skipped {i:_} records...")
                 next(gen)
             except StopIteration:
                 break
@@ -704,6 +749,7 @@ if __name__ == "__main__":
             raise
 
         if res.status_code != 200:
+            print(f"[error] server returned status {res.status_code}: {res.text}")
             continue
 
         tokenCount += res.json()["token_count"]

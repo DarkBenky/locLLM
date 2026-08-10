@@ -14,6 +14,8 @@ import time
 import math
 import struct
 import base64
+import queue
+import threading
 
 import requests
 import sentencepiece as spm
@@ -43,16 +45,17 @@ KEEP_CHECKPOINTS_COUNT = 1
 RANDOM_SAMPLING = True
 
 MAX_STEPS = 500_000
-WARMUP_STEPS = 100
+WARMUP_STEPS = 300
 WAKEUP_STEPS = 3000
 VOCAB_WAKEUP_STEPS = 500
 WAKEUP_LR = 1e-4
-MAX_LR = 5e-5
+MAX_LR = 1e-4
 MIN_LR = 1e-5
 LR_DECAY_STEPS = 250_000
 WEIGHT_DECAY = 0.1
 GRAD_CLIP = 1.0
 CHATML_MASK_PROB = 0.8
+FIM_RATIO = 0.8
 
 LOG_EVERY = 10
 CKPT_EVERY = 250
@@ -218,139 +221,187 @@ def get_code_category_ids() -> set[int]:
     res = _request_with_retry(API + "/api/get-category-index")
     cat_map = res.json()
     code_names = {
-        "Python", "JavaScript", "C++", "Java", "C", "Go", "TypeScript",
-        "Ruby", "Rust", "PHP", "Swift", "C#", "Kotlin", "Scala", "Dart",
-        "Objective-C", "Perl", "Lua", "SQL", "HTML", "CSS", "JSON",
-        "YAML", "Markdown", "XML", "OtherLanguage",
+        "python", "javascript", "c++", "java", "c", "go", "typescript",
+        "ruby", "rust", "php", "swift", "c#", "kotlin", "scala", "dart",
+        "objective-c", "perl", "lua", "sql", "html", "css", "json",
+        "yaml", "markdown", "xml", "otherlanguage",
+        # extra raw-code categories emitted by dataSets.py generators
+        "golang",     # stack_v3_gen (Go files tagged "Golang")
+        "star_coder", # star_coder_gen (bigcode/starcoderdata)
     }
-    return {cid for name, cid in cat_map.items() if name in code_names}
+    return {cid for name, cid in cat_map.items() if name.strip().lower() in code_names}
 
 
 CODE_CATEGORY_IDS = set()
 
-_leftover_cache = []
 MAX_CACHE_SIZE = 1024
 
+FETCH_BULK = 256
+POOL_MIN = 64
+BATCH_QUEUE_MAX = 2
 
-def make_batch(batch_size: int, block_size: int) -> tuple[torch.Tensor, torch.Tensor]:
-    global _leftover_cache
+_sample_pool: list[tuple[int, list[int]]] = []
+_batch_queue = queue.Queue(maxsize=BATCH_QUEUE_MAX)
+_prefetch_thread: "threading.Thread | None" = None
 
-    samples = []
-    while _leftover_cache and len(samples) < batch_size:
-        samples.append(_leftover_cache.pop())
 
-    need = batch_size - len(samples)
-    if need > 0:
-        max_retries = 300
-        for attempt in range(max_retries):
-            try:
-                fresh = get_next_samples(need)
-            except RuntimeError as e:
-                if attempt == 0:
-                    print(f"WARNING: get_next_samples failed: {e}")
-                if attempt < max_retries - 1:
-                    delay = min(60, 2 + 2 ** min(attempt, 6))
-                    time.sleep(delay)
-                    continue
-                raise
-            if fresh:
-                break
+def _fetch_samples_with_retry(count: int) -> list[tuple[int, list[int]]]:
+    max_retries = 300
+    for attempt in range(max_retries):
+        try:
+            fresh = get_next_samples(count)
+        except RuntimeError as e:
             if attempt == 0:
-                print("WARNING: no samples returned — cursor may be exhausted, retrying...")
-            time.sleep(2)
+                print(f"WARNING: get_next_samples failed: {e}")
+            if attempt < max_retries - 1:
+                delay = min(60, 2 + 2 ** min(attempt, 6))
+                time.sleep(delay)
+                continue
+            raise
+        if fresh:
+            return fresh
+        if attempt == 0:
+            print("WARNING: no samples returned — cursor may be exhausted, retrying...")
+        time.sleep(2)
+    raise RuntimeError(
+        f"no samples returned after {max_retries} retries — "
+        "check that the data server is running and data exists"
+    )
+
+
+def _process_sample(tokens: list, cat_id: int, block_size: int):
+    global _sample_pool
+    is_code = cat_id in CODE_CATEGORY_IDS
+    do_fim = is_code and random.random() < FIM_RATIO and len(tokens) >= 64
+
+    if do_fim:
+        fim_cap = block_size - 3
+        if len(tokens) > fim_cap:
+            tail = tokens[fim_cap:]
+            if len(tail) >= 16:
+                if len(_sample_pool) < MAX_CACHE_SIZE:
+                    _sample_pool.append((cat_id, tail))
+                else:
+                    print(f"WARNING: pool full ({MAX_CACHE_SIZE}), discarding tail of sample")
+            tokens = tokens[:fim_cap]
+        seq = torch.tensor(tokens, dtype=torch.long)
+        pre_end = random.randint(len(tokens) // 4, 7 * len(tokens) // 10)
+        mid_max = min(len(tokens) - pre_end - 4, len(tokens) // 4)
+        if mid_max < 16:
+            do_fim = False
+
+    if not do_fim:
+        headers, ends = _CHATML.analyze(tokens)
+        if headers:
+            toks = chatml.replace_markers(tokens, headers, ends, CHATML_IDS)
+            mt = torch.tensor(chatml.mask_from_ids(toks, CHATML_IDS)[1:], dtype=torch.bool)
         else:
-            raise RuntimeError(
-                f"no samples returned after {max_retries} retries — "
-                "check that the data server is running and data exists"
-            )
-        samples.extend(fresh)
+            toks = tokens
+            mt = None
+        return torch.tensor(toks, dtype=torch.long), mt, False
 
-    categories = []
-    token_lists = []
-    for cat, tokens in samples:
-        if len(tokens) > block_size + 1:
-            if len(_leftover_cache) < MAX_CACHE_SIZE:
-                _leftover_cache.append((cat, tokens[block_size:]))
-            else:
-                print(f"WARNING: leftover cache full ({MAX_CACHE_SIZE}), discarding tail of sample")
-            tokens = tokens[:block_size + 1]
-        if len(tokens) < 4:
-            continue
-        record_raw_tokens(tokens)
-        token_lists.append(tokens)
-        categories.append(cat)
+    mid_len = random.randint(min(64, mid_max), mid_max)
+    mid_end = min(pre_end + mid_len, len(tokens) - 4)
+    prefix = seq[:pre_end]
+    middle = seq[pre_end:mid_end]
+    suffix = seq[mid_end:]
 
-    if len(token_lists) == 0:
-        tok = torch.zeros(1, block_size, dtype=torch.long)
-        return tok.to(DEVICE), torch.full_like(tok, -100), [], []
+    fim_seq = torch.cat([
+        torch.tensor([FIM_PRE], dtype=torch.long),
+        prefix,
+        torch.tensor([FIM_SUF], dtype=torch.long),
+        suffix,
+        torch.tensor([FIM_MID], dtype=torch.long),
+        middle,
+        torch.tensor([FIM_END], dtype=torch.long),
+    ])
+    n = len(fim_seq) - 1
+    mt = torch.zeros(n, dtype=torch.bool)
+    mid_pos = len(prefix) + len(suffix) + 2
+    if n > mid_pos:
+        end = min(n - mid_pos, len(fim_seq) - mid_pos - 1)
+        mt[mid_pos:mid_pos + end] = True
+    return fim_seq, mt, True
 
-    x = torch.full((len(token_lists), block_size), 0, dtype=torch.long)
-    y = torch.full((len(token_lists), block_size), -100, dtype=torch.long)
+
+def _assemble_batch(processed: list, block_size: int):
+    if not processed:
+        return (torch.zeros(1, 1, dtype=torch.long),
+                torch.full((1, 1), -100, dtype=torch.long),
+                [], [])
+    seqs = [p[0] for p in processed]
+    ns = [min(len(s) - 1, block_size) for s in seqs]
+    max_n = max(ns)
+    bs = len(processed)
+    x = torch.zeros((bs, max_n), dtype=torch.long)
+    y = torch.full((bs, max_n), -100, dtype=torch.long)
     fim_flags = []
-    for i, (tokens, cat_id) in enumerate(zip(token_lists, categories)):
-        is_code = cat_id in CODE_CATEGORY_IDS
-        do_fim = is_code and random.random() < 0.5 and len(tokens) >= 64
-
-        if do_fim:
-            fim_cap = block_size - 3
-            if len(tokens) > fim_cap:
-                tail = tokens[fim_cap:]
-                if len(tail) >= 16:
-                    if len(_leftover_cache) < MAX_CACHE_SIZE:
-                        _leftover_cache.append((cat_id, tail))
-                    else:
-                        print(f"WARNING: leftover cache full ({MAX_CACHE_SIZE}), discarding tail of sample")
-                tokens = tokens[:fim_cap]
-            seq = torch.tensor(tokens, dtype=torch.long)
-            pre_end = random.randint(len(tokens) // 4, 7 * len(tokens) // 10)
-            mid_max = min(len(tokens) - pre_end - 4, len(tokens) // 4)
-            if mid_max < 16:
-                do_fim = False
-
-        if not do_fim:
-            headers, ends = _CHATML.analyze(tokens)
-            if headers:
-                toks = chatml.replace_markers(tokens, headers, ends, CHATML_IDS)
-                mt = torch.tensor(chatml.mask_from_ids(toks, CHATML_IDS)[1:], dtype=torch.bool)
-            else:
-                toks = tokens
-                mt = None
-            seq = torch.tensor(toks, dtype=torch.long)
-            n = min(len(toks) - 1, block_size)
-            x[i, :n] = seq[:n]
-            y[i, :n] = seq[1:n + 1]
-            if mt is not None and CHATML_MASK_PROB > 0.0 and random.random() < CHATML_MASK_PROB:
+    for i, (seq, mt, fim_flag) in enumerate(processed):
+        n = ns[i]
+        x[i, :n] = seq[:n]
+        y[i, :n] = seq[1:n + 1]
+        if mt is not None:
+            apply = fim_flag or (CHATML_MASK_PROB > 0.0 and random.random() < CHATML_MASK_PROB)
+            if apply:
                 y[i, :n] = torch.where(
-                    mt[:n].to(seq.device), seq[1:n + 1],
-                    torch.full_like(seq[1:n + 1], -100))
-            fim_flags.append(False)
-            continue
+                    mt[:n], seq[1:n + 1], torch.full_like(seq[1:n + 1], -100))
+        fim_flags.append(fim_flag)
+    return x, y, fim_flags
 
-        mid_len = random.randint(min(64, mid_max), mid_max)
-        mid_end = min(pre_end + mid_len, len(tokens) - 4)
 
-        prefix = seq[:pre_end]
-        middle = seq[pre_end:mid_end]
-        suffix = seq[mid_end:]
+def _build_batch_from_pool(batch_size: int, block_size: int):
+    global _sample_pool
+    while len(_sample_pool) < POOL_MIN:
+        _sample_pool.extend(_fetch_samples_with_retry(FETCH_BULK))
 
-        fim_seq = torch.cat([
-            torch.tensor([FIM_PRE], dtype=torch.long),
-            prefix,
-            torch.tensor([FIM_SUF], dtype=torch.long),
-            suffix,
-            torch.tensor([FIM_MID], dtype=torch.long),
-            middle,
-            torch.tensor([FIM_END], dtype=torch.long),
-        ])
-        fim_n = len(fim_seq) - 1
-        x[i, :fim_n] = fim_seq[:fim_n]
-        mid_pos = len(prefix) + len(suffix) + 2
-        if fim_n > mid_pos:
-            end = min(fim_n - mid_pos, len(fim_seq) - mid_pos - 1)
-            y[i, mid_pos:mid_pos + end] = fim_seq[mid_pos + 1:mid_pos + 1 + end]
-        fim_flags.append(True)
+    trimmed = []
+    tails = []
+    for cat, tokens in _sample_pool:
+        if len(tokens) > block_size + 1:
+            if len(tails) < MAX_CACHE_SIZE:
+                tails.append((cat, tokens[block_size:]))
+            else:
+                print(f"WARNING: pool full ({MAX_CACHE_SIZE}), discarding tail of sample")
+            tokens = tokens[:block_size + 1]
+        if len(tokens) >= 4:
+            trimmed.append((cat, tokens))
 
-    return x.to(DEVICE), y.to(DEVICE), categories, fim_flags
+    trimmed.sort(key=lambda c: len(c[1]))
+    chosen = trimmed[:batch_size]
+    _sample_pool = tails + trimmed[batch_size:]
+
+    if not chosen:
+        return (torch.zeros(1, 1, dtype=torch.long),
+                torch.full((1, 1), -100, dtype=torch.long),
+                [], [])
+
+    processed = []
+    cats = []
+    for cat, tokens in chosen:
+        record_raw_tokens(tokens)
+        processed.append(_process_sample(tokens, cat, block_size))
+        cats.append(cat)
+    x, y, fim_flags = _assemble_batch(processed, block_size)
+    return x, y, cats, fim_flags
+
+
+def _data_worker():
+    while True:
+        try:
+            batch = _build_batch_from_pool(BATCH_SIZE, BLOCK_SIZE)
+            _batch_queue.put(batch)
+        except Exception as e:
+            print(f"WARNING: data worker error: {e}")
+            time.sleep(5)
+
+
+def make_batch(batch_size: int, block_size: int):
+    global _prefetch_thread
+    if _prefetch_thread is None:
+        _prefetch_thread = threading.Thread(target=_data_worker, daemon=True, name="data-worker")
+        _prefetch_thread.start()
+    x, y, cats, fim_flags = _batch_queue.get()
+    return x.to(DEVICE), y.to(DEVICE), cats, fim_flags
 
 
 def get_lr(step: int, step0: int = 0) -> float:

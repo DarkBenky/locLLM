@@ -9,5 +9,12 @@
 - [x] https://huggingface.co/datasets/HuggingFaceTB/smoltalk
 - [x] https://huggingface.co/datasets/open-thoughts/AgentTrove
 - [x] https://huggingface.co/datasets/bigcode/starcoderdata
-- [ ] https://huggingface.co/datasets/code-search-net/code_search_net
+- [X] https://huggingface.co/datasets/code-search-net/code_search_net
 - [ ] https://huggingface.co/datasets/open-phi/programming_books_llama
+
+- [x] increase the split of FIM to 80%
+  - [x] Fim support for all samples from stack V3 (also code_search_net raw + starcoderdata)
+- [X] increase LR ?
+- [X] optimize training (tokens/sec)
+- [ ] threading for dataset uploading
+  - [ ] pre dataset checkpoint
