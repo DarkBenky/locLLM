@@ -9,3 +9,4 @@
 - [x] https://huggingface.co/datasets/HuggingFaceTB/smoltalk
 - [x] https://huggingface.co/datasets/open-thoughts/AgentTrove
 - [x] https://huggingface.co/datasets/bigcode/starcoderdata
+- [ ] https://huggingface.co/datasets/code-search-net/code_search_net
