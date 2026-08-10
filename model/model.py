@@ -129,13 +129,17 @@ class Transformer(nn.Module):
         return logits, loss
  
     @torch.no_grad()
-    def generate(self, idx: torch.Tensor, max_new_tokens: int, temperature: float = 1.0):
+    def generate(self, idx: torch.Tensor, max_new_tokens: int, temperature: float = 1.0,
+                 stop_tokens=None):
+        stop = set(stop_tokens) if stop_tokens else None
         for _ in range(max_new_tokens):
             idx_cond = idx[:, -self.max_seq_len:]
             logits, _ = self(idx_cond)
             logits = logits[:, -1, :] / temperature
             probs = F.softmax(logits, dim=-1)
             next_tok = torch.multinomial(probs, num_samples=1)
+            if stop is not None and int(next_tok.item()) in stop:
+                break
             idx = torch.cat([idx, next_tok], dim=1)
         return idx
 

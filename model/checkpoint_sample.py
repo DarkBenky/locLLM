@@ -5,6 +5,8 @@ import unicodedata
 import torch
 import wandb
 
+import chatml
+
 SAMPLE_PROMPT_LINES = 6
 SAMPLE_GEN_TOKENS = 32
 SAMPLE_TEMP = 0.8
@@ -68,11 +70,19 @@ def run_checkpoint_sample(step: int, model, sp, block_size: int, device: str) ->
         model.eval()
         with torch.no_grad():
             prompt = torch.tensor([prompt_ids], dtype=torch.long, device=device)
+            base = sp.get_piece_size()
+            stop_tokens = {base + 3, base + chatml.IM_END_OFF}
             gen = model.generate(prompt, max_new_tokens=SAMPLE_GEN_TOKENS,
-                                 temperature=SAMPLE_TEMP)
+                                 temperature=SAMPLE_TEMP, stop_tokens=stop_tokens)
         model.train()
 
-        gen_text = sp.decode(gen[0, prompt.shape[1]:].tolist())
+        gen_ids = gen[0, prompt.shape[1]:].tolist()
+        if gen_ids:
+            gen_text = chatml.safe_decode(
+                gen_ids, sp, chatml.reserved_ids(base),
+                extra={base: "", base + 1: "", base + 2: "", base + 3: ""})
+        else:
+            gen_text = "<|im_end|>"
         block = _fmt_checkpoint_sample(step, prompt_text, gen_text)
         for line in block:
             print(line)
