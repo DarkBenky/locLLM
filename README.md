@@ -10,3 +10,4 @@
 - [x] https://huggingface.co/datasets/open-thoughts/AgentTrove
 - [x] https://huggingface.co/datasets/bigcode/starcoderdata
 - [ ] https://huggingface.co/datasets/code-search-net/code_search_net
+- [ ] https://huggingface.co/datasets/open-phi/programming_books_llama
