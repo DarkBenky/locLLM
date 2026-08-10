@@ -367,8 +367,10 @@ def _build_batch_from_pool(batch_size: int, block_size: int):
             trimmed.append((cat, tokens))
 
     trimmed.sort(key=lambda c: len(c[1]))
-    chosen = trimmed[:batch_size]
-    _sample_pool = tails + trimmed[batch_size:]
+    start = random.randrange(0, max(1, len(trimmed) - batch_size + 1))
+    chosen = trimmed[start:start + batch_size]
+    del trimmed[start:start + batch_size]
+    _sample_pool = tails + trimmed
 
     if not chosen:
         return (torch.zeros(1, 1, dtype=torch.long),
