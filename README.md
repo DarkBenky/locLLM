@@ -16,5 +16,5 @@
   - [x] Fim support for all samples from stack V3 (also code_search_net raw + starcoderdata)
 - [X] increase LR ?
 - [X] optimize training (tokens/sec)
-- [ ] threading for dataset uploading (dataSets.py)
-  - [ ] pre dataset checkpoint
+- [X] threading for dataset uploading (dataSets.py)
+  - [X] pre dataset checkpoint

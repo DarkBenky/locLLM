@@ -109,17 +109,21 @@ class Transformer(nn.Module):
         elif isinstance(module, nn.Embedding):
             nn.init.normal_(module.weight, mean=0.0, std=0.02)
  
-    def forward(self, idx: torch.Tensor, targets: torch.Tensor = None):
+    def forward(self, idx: torch.Tensor, targets: torch.Tensor = None, return_hidden: bool = False):
         B, T = idx.shape
         assert T <= self.max_seq_len, f"sequence length {T} exceeds max_seq_len {self.max_seq_len}"
- 
+
         cos, sin = build_rope_cache(T, self.head_dim, base=self.rope_base,
                                      device=idx.device, dtype=self.tok_emb.weight.dtype)
- 
+
         x = self.tok_emb(idx)
         for block in self.blocks:
             x = torch.utils.checkpoint.checkpoint(block, x, cos, sin, use_reentrant=False)
         x = self.final_norm(x)
+
+        if return_hidden:
+            return x
+
         logits = self.lm_head(x)
  
         loss = None

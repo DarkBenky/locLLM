@@ -56,6 +56,7 @@ WEIGHT_DECAY = 0.1
 GRAD_CLIP = 1.0
 CHATML_MASK_PROB = 0.8
 FIM_RATIO = 0.8
+LOSS_CHUNK = 1024  # sequence-chunk size for head+loss (bounds logits memory)
 
 LOG_EVERY = 10
 CKPT_EVERY = 250
@@ -544,17 +545,40 @@ if __name__ == "__main__":
         if (y == -100).all():
             return 0.0, 0.0, 0.0, 0, {}
         with torch.autocast(device_type="cuda", dtype=AUTOCAST_DTYPE, enabled=(DEVICE == "cuda")):
-            logits, _ = model(x)
-            loss = F.cross_entropy(logits.view(-1, logits.size(-1)), y.reshape(-1))
+            hidden = model(x, return_hidden=True)  # (B, T, DIM) — ~33 MB at T=4096
+            seq_len = hidden.shape[1]
+
+            def _head_ce(hchunk, ychunk):
+                logits = model.lm_head(hchunk)
+                return F.cross_entropy(logits.view(-1, logits.size(-1)), ychunk.reshape(-1))
+
+            losses = []
+            counts = []
+            for s in range(0, seq_len, LOSS_CHUNK):
+                e = min(s + LOSS_CHUNK, seq_len)
+                yc = y[:, s:e]
+                losses.append(torch.utils.checkpoint.checkpoint(
+                    _head_ce, hidden[:, s:e], yc, use_reentrant=False))
+                counts.append(int((yc != -100).sum()))
+            loss = sum(c * l for c, l in zip(counts, losses)) / sum(counts)
         scaler.scale(loss / GRAD_ACCUM).backward()
         loss_val = loss.item()
         with torch.no_grad():
             mask = y != -100
             n_tok = mask.sum().item()
-            acc = (logits.argmax(dim=-1)[mask] == y[mask]).float().mean().item()
-            per_row = F.cross_entropy(
-                logits.view(-1, logits.size(-1)), y.reshape(-1), reduction="none",
-            ).view_as(y)
+            correct = 0
+            per_row = torch.zeros_like(y, dtype=torch.float32)
+            for s in range(0, seq_len, LOSS_CHUNK):
+                e = min(s + LOSS_CHUNK, seq_len)
+                logits_c = model.lm_head(hidden[:, s:e])
+                yc = y[:, s:e]
+                mc = mask[:, s:e]
+                correct += (logits_c.argmax(dim=-1)[mc] == yc[mc]).sum().item()
+                pr = F.cross_entropy(
+                    logits_c.view(-1, logits_c.size(-1)), yc.reshape(-1), reduction="none",
+                ).view_as(yc)
+                per_row[:, s:e] = pr
+            acc = correct / max(n_tok, 1)
             row_counts = mask.sum(dim=-1).clamp(min=1).float()
             row_loss = per_row.sum(dim=-1) / row_counts
             cat_stats = {}
@@ -563,7 +587,7 @@ if __name__ == "__main__":
                 wl, nt = cat_stats.get(key, (0.0, 0))
                 rc = int(row_counts[j].item())
                 cat_stats[key] = (wl + row_loss[j].item() * rc, nt + rc)
-        del logits, loss, mask, per_row, x, y
+        del hidden, loss, mask, per_row, x, y
         return loss_val, math.exp(min(loss_val, 20)), acc, n_tok, cat_stats
 
     eval_set = []
@@ -588,30 +612,38 @@ if __name__ == "__main__":
     def run_eval(step: int):
         if not eval_set:
             return
-        x = torch.full((len(eval_set), BLOCK_SIZE), 0, dtype=torch.long, device=DEVICE)
-        y = torch.full((len(eval_set), BLOCK_SIZE), -100, dtype=torch.long, device=DEVICE)
-        for i, (cat, tokens) in enumerate(eval_set):
-            headers, ends = _CHATML.analyze(tokens)
-            if headers:
-                toks = chatml.replace_markers(tokens, headers, ends, CHATML_IDS)
-                mt = torch.tensor(chatml.mask_from_ids(toks, CHATML_IDS)[1:], dtype=torch.bool)
-            else:
-                toks = tokens
-                mt = None
-            seq = torch.tensor(toks, dtype=torch.long, device=DEVICE)
-            n = min(len(seq) - 1, BLOCK_SIZE)
-            x[i, :n] = seq[:n]
-            y[i, :n] = seq[1:n + 1]
-            if mt is not None:
-                y[i, :n] = torch.where(
-                    mt[:n].to(seq.device), seq[1:n + 1],
-                    torch.full_like(seq[1:n + 1], -100))
         model.eval()
-        with torch.autocast(device_type="cuda", dtype=AUTOCAST_DTYPE, enabled=(DEVICE == "cuda")):
-            logits, _ = model(x)
-            loss = F.cross_entropy(logits.view(-1, logits.size(-1)), y.reshape(-1))
+        total_loss = 0.0
+        chunks = 0
+        step_chunk = max(1, len(eval_set) // 2)  # process eval in small batches to bound logits memory
+        for s0 in range(0, len(eval_set), step_chunk):
+            batch = eval_set[s0:s0 + step_chunk]
+            x = torch.full((len(batch), BLOCK_SIZE), 0, dtype=torch.long, device=DEVICE)
+            y = torch.full((len(batch), BLOCK_SIZE), -100, dtype=torch.long, device=DEVICE)
+            for i, (cat, tokens) in enumerate(batch):
+                headers, ends = _CHATML.analyze(tokens)
+                if headers:
+                    toks = chatml.replace_markers(tokens, headers, ends, CHATML_IDS)
+                    mt = torch.tensor(chatml.mask_from_ids(toks, CHATML_IDS)[1:], dtype=torch.bool)
+                else:
+                    toks = tokens
+                    mt = None
+                seq = torch.tensor(toks, dtype=torch.long, device=DEVICE)
+                n = min(len(seq) - 1, BLOCK_SIZE)
+                x[i, :n] = seq[:n]
+                y[i, :n] = seq[1:n + 1]
+                if mt is not None:
+                    y[i, :n] = torch.where(
+                        mt[:n].to(seq.device), seq[1:n + 1],
+                        torch.full_like(seq[1:n + 1], -100))
+            with torch.autocast(device_type="cuda", dtype=AUTOCAST_DTYPE, enabled=(DEVICE == "cuda")):
+                logits, _ = model(x)
+                loss = F.cross_entropy(logits.view(-1, logits.size(-1)), y.reshape(-1))
+            total_loss += loss.item()
+            chunks += 1
+            del logits, loss, x, y
         model.train()
-        val = loss.item()
+        val = total_loss / max(chunks, 1)
         print(f"  eval @ step {step}: loss {val:.4f} | ppl {math.exp(min(val, 20)):.1f}")
         wandb.log({"eval_loss": val, "eval_ppl": math.exp(min(val, 20))}, step=step)
 
@@ -697,6 +729,7 @@ if __name__ == "__main__":
                         "step": step}, ckpt_path)
             print(f"saved checkpoint: {ckpt_path}")
             run_checkpoint_sample(step, model, sp, BLOCK_SIZE, DEVICE)
+            torch.cuda.empty_cache()
 
             if KEEP_CHECKPOINTS_COUNT == 0 or KEEP_CHECKPOINTS_COUNT == -1:
                 pass
@@ -721,3 +754,4 @@ if __name__ == "__main__":
 
         if step > 0 and step % EVAL_EVERY == 0:
             run_eval(step)
+            torch.cuda.empty_cache()
