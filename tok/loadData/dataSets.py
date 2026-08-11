@@ -2,6 +2,7 @@ import ast
 import re
 import json
 import sys
+import random
 
 from datasets import load_dataset
 
@@ -335,7 +336,7 @@ def star_coder_gen():
             continue
 
 
-@pipe.register("agent_trove")
+# @pipe.register("agent_trove")
 def agent_trove_gen():
     ds = load_dataset("open-thoughts/AgentTrove", split="train", streaming=True, cache_dir=CACHE_DIR)
     for repo in ds:
@@ -378,7 +379,7 @@ def stack_v3_gen(supported_langs=None):
 pipe.register("stack_v3", lambda: stack_v3_gen(langs), prefetch=32)
 
 
-@pipe.register("reasoning")
+# @pipe.register("reasoning")
 def reasoning_gen():
     ds = load_dataset("Qyrou/reasoning-corpus-4K-5M-v1", split="train", streaming=True, cache_dir=CACHE_DIR)
     for repo in ds:
@@ -390,6 +391,90 @@ def reasoning_gen():
         except:
             continue
 
+@pipe.register("claude")
+def claude_gen():
+    ds = load_dataset("clzoro/Claude-Distills", split="train", streaming=True, cache_dir=CACHE_DIR)
+    for repo in ds:
+        try:
+            messages = [m for m in (repo.get("messages") or [])
+                        if isinstance(m, dict) and m.get("content", "").strip()]
+            if not messages:
+                continue
+            msg = to_chatml(messages)
+            yield {
+                "text": msg,
+                "category": "claude",
+            }
+        except:
+            continue
+
+
+@pipe.register("rose")
+def rose_gen():
+    ds = load_dataset("CL-From-Nothing/rose_code_samples", split="train", streaming=True, cache_dir=CACHE_DIR)
+    for repo in ds:
+        try:
+            prompt = repo.get("prompt") or ""
+            response = repo.get("response") or ""
+            try:
+                rewards = float(repo.get("rewards") or 0)
+            except (TypeError, ValueError):
+                continue
+            if not prompt or not response or rewards <= 0.5:
+                continue
+            msg = to_chatml([{"role": "user", "content": prompt}, {"role": "assistant", "content": response}])
+            yield {
+                "text": msg,
+                "category": "rose",
+            }
+        except:
+            continue
+
+@pipe.register("google_defect")
+def google_defect_gen():
+    ds = load_dataset("google/code_x_glue_cc_defect_detection", split="train", streaming=True, cache_dir=CACHE_DIR)
+    for repo in ds:
+        try:
+            func = repo.get("func") or ""
+            try:
+                target = int(repo.get("target") or 0)
+            except (TypeError, ValueError):
+                continue
+            if not func:
+                continue
+            prompt = f"Analyze the following code and determine if it contains a defect:\n{func}\n"
+            response = "The code contains a defect." if target else "The code does not contain a defect."
+            msg = to_chatml([{"role": "user", "content": prompt}, {"role": "assistant", "content": response}])
+            yield {
+                "text": msg,
+                "category": "code_defect_detection",
+            }
+        except:
+            continue
+
+@pipe.register("google_function_clone")
+def google_function_clone_gen():
+    ds = load_dataset("google/code_x_glue_cc_clone_detection_big_clone_bench", split="train", streaming=True, cache_dir=CACHE_DIR)
+    for repo in ds:
+        func1 = repo.get("func1") or ""
+        func2 = repo.get("func2") or ""
+        try:
+            label = int(repo.get("label") or 0)
+        except (TypeError, ValueError):
+            continue
+        if not func1 or not func2:
+            continue
+        if random.random() < 0.5 or label == 0:
+            prompt = f"Determine if the following two code snippets are functionally equivalent:\nSnippet 1:\n{func1}\nSnippet 2:\n{func2}\n"
+            response = "The two code snippets are functionally equivalent." if label == 1 else "The two code snippets are not functionally equivalent."
+        else:
+            prompt = f"Write functionally equivalent code for the following snippet:\n{func1}\n"
+            response = f"Functionally equivalent code:\n{func2}"
+        msg = to_chatml([{"role": "user", "content": prompt}, {"role": "assistant", "content": response}])
+        yield {
+            "text": msg,
+            "category": "code_clone_detection",
+        }
 
 @pipe.register("code_instruction")
 def code_instruction_gen():
