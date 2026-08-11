@@ -546,6 +546,7 @@ if __name__ == "__main__":
             return 0.0, 0.0, 0.0, 0, {}
         with torch.autocast(device_type="cuda", dtype=AUTOCAST_DTYPE, enabled=(DEVICE == "cuda")):
             hidden = model(x, return_hidden=True)  # (B, T, DIM) — ~33 MB at T=4096
+            hidden = hidden.to(MODEL_DTYPE)        # final_norm promotes to fp32 under autocast; normalize
             seq_len = hidden.shape[1]
 
             def _head_ce(hchunk, ychunk):
