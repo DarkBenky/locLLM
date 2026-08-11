@@ -551,7 +551,11 @@ if __name__ == "__main__":
 
             def _head_ce(hchunk, ychunk):
                 logits = model.lm_head(hchunk)
-                return F.cross_entropy(logits.view(-1, logits.size(-1)), ychunk.reshape(-1))
+                return F.cross_entropy(
+                    logits.view(-1, logits.size(-1)),
+                    ychunk.reshape(-1),
+                    reduction="sum",
+                )
 
             losses = []
             counts = []
@@ -561,7 +565,7 @@ if __name__ == "__main__":
                 losses.append(torch.utils.checkpoint.checkpoint(
                     _head_ce, hidden[:, s:e], yc, use_reentrant=False))
                 counts.append(int((yc != -100).sum()))
-            loss = sum(c * l for c, l in zip(counts, losses)) / sum(counts)
+            loss = sum(losses) / sum(counts)
         scaler.scale(loss / GRAD_ACCUM).backward()
         loss_val = loss.item()
         with torch.no_grad():
@@ -580,13 +584,14 @@ if __name__ == "__main__":
                 ).view_as(yc)
                 per_row[:, s:e] = pr
             acc = correct / max(n_tok, 1)
-            row_counts = mask.sum(dim=-1).clamp(min=1).float()
+            row_real = mask.sum(dim=-1).float()
+            row_counts = row_real.clamp(min=1)
             row_loss = per_row.sum(dim=-1) / row_counts
             cat_stats = {}
             for j, cat in enumerate(cats):
                 key = f"fim/{cat}" if fim_flags[j] else f"lm/{cat}"
                 wl, nt = cat_stats.get(key, (0.0, 0))
-                rc = int(row_counts[j].item())
+                rc = int(row_real[j].item())
                 cat_stats[key] = (wl + row_loss[j].item() * rc, nt + rc)
         del hidden, loss, mask, per_row, x, y
         return loss_val, math.exp(min(loss_val, 20)), acc, n_tok, cat_stats
@@ -615,7 +620,7 @@ if __name__ == "__main__":
             return
         model.eval()
         total_loss = 0.0
-        chunks = 0
+        total_tokens = 0
         step_chunk = max(1, len(eval_set) // 2)  # process eval in small batches to bound logits memory
         for s0 in range(0, len(eval_set), step_chunk):
             batch = eval_set[s0:s0 + step_chunk]
@@ -639,12 +644,16 @@ if __name__ == "__main__":
                         torch.full_like(seq[1:n + 1], -100))
             with torch.autocast(device_type="cuda", dtype=AUTOCAST_DTYPE, enabled=(DEVICE == "cuda")):
                 logits, _ = model(x)
-                loss = F.cross_entropy(logits.view(-1, logits.size(-1)), y.reshape(-1))
+                loss = F.cross_entropy(
+                    logits.view(-1, logits.size(-1)),
+                    y.reshape(-1),
+                    reduction="sum",
+                )
             total_loss += loss.item()
-            chunks += 1
+            total_tokens += int((y != -100).sum().item())
             del logits, loss, x, y
         model.train()
-        val = total_loss / max(chunks, 1)
+        val = total_loss / max(total_tokens, 1)
         print(f"  eval @ step {step}: loss {val:.4f} | ppl {math.exp(min(val, 20)):.1f}")
         wandb.log({"eval_loss": val, "eval_ppl": math.exp(min(val, 20))}, step=step)
 
