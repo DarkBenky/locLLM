@@ -56,6 +56,7 @@ WEIGHT_DECAY = 0.1
 GRAD_CLIP = 1.0
 CHATML_MASK_PROB = 0.8
 FIM_RATIO = 0.95
+FIM_VARIANTS = 2  # FIM samples generated per code sample
 LOSS_CHUNK = 1024  # sequence-chunk size for head+loss (bounds logits memory)
 
 LOG_EVERY = 10
@@ -334,10 +335,6 @@ def _process_sample(tokens: list, cat_id: int, block_size: int):
         split1 = _fim_split(L)
         if split1 is None:
             do_fim = False
-        else:
-            split2 = _fim_split(L)
-            if split2 is None:
-                split2 = split1
 
     if not do_fim:
         headers, ends = _CHATML.analyze(tokens)
@@ -349,10 +346,22 @@ def _process_sample(tokens: list, cat_id: int, block_size: int):
             mt = None
         return [(torch.tensor(toks, dtype=torch.long), mt, False)]
 
-    variants = [_fim_variant(seq, split1[0], split1[1])]
-    if split2 != split1:
-        variants.append(_fim_variant(seq, split2[0], split2[1]))
-    return [(v[0], v[1], True) for v in variants]
+    splits = [split1]
+    seen = {split1}
+    attempts = 0
+    while len(splits) < FIM_VARIANTS and attempts < FIM_VARIANTS * 4:
+        attempts += 1
+        s = _fim_split(L)
+        if s is None:
+            s = split1
+        if s not in seen:
+            seen.add(s)
+            splits.append(s)
+    variants = []
+    for s in splits:
+        vseq, vmt = _fim_variant(seq, s[0], s[1])
+        variants.append((vseq, vmt, True))
+    return variants
 
 
 def _assemble_batch(processed: list, block_size: int):
