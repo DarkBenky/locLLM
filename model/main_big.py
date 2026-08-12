@@ -55,7 +55,7 @@ LR_DECAY_STEPS = 250_000
 WEIGHT_DECAY = 0.1
 GRAD_CLIP = 1.0
 CHATML_MASK_PROB = 0.8
-FIM_RATIO = 0.8
+FIM_RATIO = 0.95
 LOSS_CHUNK = 1024  # sequence-chunk size for head+loss (bounds logits memory)
 
 LOG_EVERY = 10
@@ -282,6 +282,38 @@ def _fetch_samples_with_retry(count: int) -> list[tuple[int, list[int]]]:
     )
 
 
+def _fim_split(L: int):
+    pre_end = random.randint(L // 4, 7 * L // 10)
+    mid_max = min(L - pre_end - 4, L // 4)
+    if mid_max < 16:
+        return None
+    mid_len = random.randint(min(64, mid_max), mid_max)
+    mid_end = min(pre_end + mid_len, L - 4)
+    return pre_end, mid_end
+
+
+def _fim_variant(seq, pre_end: int, mid_end: int):
+    prefix = seq[:pre_end]
+    middle = seq[pre_end:mid_end]
+    suffix = seq[mid_end:]
+    fim_seq = torch.cat([
+        torch.tensor([FIM_PRE], dtype=torch.long),
+        prefix,
+        torch.tensor([FIM_SUF], dtype=torch.long),
+        suffix,
+        torch.tensor([FIM_MID], dtype=torch.long),
+        middle,
+        torch.tensor([FIM_END], dtype=torch.long),
+    ])
+    n = len(fim_seq) - 1
+    mt = torch.zeros(n, dtype=torch.bool)
+    mid_pos = len(prefix) + len(suffix) + 2
+    if n > mid_pos:
+        end = min(n - mid_pos, len(fim_seq) - mid_pos - 1)
+        mt[mid_pos:mid_pos + end] = True
+    return fim_seq, mt
+
+
 def _process_sample(tokens: list, cat_id: int, block_size: int):
     global _sample_pool
     is_code = cat_id in CODE_CATEGORY_IDS
@@ -298,10 +330,14 @@ def _process_sample(tokens: list, cat_id: int, block_size: int):
                     print(f"WARNING: pool full ({MAX_CACHE_SIZE}), discarding tail of sample")
             tokens = tokens[:fim_cap]
         seq = torch.tensor(tokens, dtype=torch.long)
-        pre_end = random.randint(len(tokens) // 4, 7 * len(tokens) // 10)
-        mid_max = min(len(tokens) - pre_end - 4, len(tokens) // 4)
-        if mid_max < 16:
+        L = len(tokens)
+        split1 = _fim_split(L)
+        if split1 is None:
             do_fim = False
+        else:
+            split2 = _fim_split(L)
+            if split2 is None:
+                split2 = split1
 
     if not do_fim:
         headers, ends = _CHATML.analyze(tokens)
@@ -311,30 +347,12 @@ def _process_sample(tokens: list, cat_id: int, block_size: int):
         else:
             toks = tokens
             mt = None
-        return torch.tensor(toks, dtype=torch.long), mt, False
+        return [(torch.tensor(toks, dtype=torch.long), mt, False)]
 
-    mid_len = random.randint(min(64, mid_max), mid_max)
-    mid_end = min(pre_end + mid_len, len(tokens) - 4)
-    prefix = seq[:pre_end]
-    middle = seq[pre_end:mid_end]
-    suffix = seq[mid_end:]
-
-    fim_seq = torch.cat([
-        torch.tensor([FIM_PRE], dtype=torch.long),
-        prefix,
-        torch.tensor([FIM_SUF], dtype=torch.long),
-        suffix,
-        torch.tensor([FIM_MID], dtype=torch.long),
-        middle,
-        torch.tensor([FIM_END], dtype=torch.long),
-    ])
-    n = len(fim_seq) - 1
-    mt = torch.zeros(n, dtype=torch.bool)
-    mid_pos = len(prefix) + len(suffix) + 2
-    if n > mid_pos:
-        end = min(n - mid_pos, len(fim_seq) - mid_pos - 1)
-        mt[mid_pos:mid_pos + end] = True
-    return fim_seq, mt, True
+    variants = [_fim_variant(seq, split1[0], split1[1])]
+    if split2 != split1:
+        variants.append(_fim_variant(seq, split2[0], split2[1]))
+    return [(v[0], v[1], True) for v in variants]
 
 
 def _assemble_batch(processed: list, block_size: int):
@@ -394,8 +412,9 @@ def _build_batch_from_pool(batch_size: int, block_size: int):
     cats = []
     for cat, tokens in chosen:
         record_raw_tokens(tokens)
-        processed.append(_process_sample(tokens, cat, block_size))
-        cats.append(cat)
+        outs = _process_sample(tokens, cat, block_size)
+        processed.extend(outs)
+        cats.extend([cat] * len(outs))
     x, y, fim_flags = _assemble_batch(processed, block_size)
     return x, y, cats, fim_flags
 
