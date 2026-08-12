@@ -229,6 +229,18 @@ def get_code_category_ids() -> set[int]:
         # extra raw-code categories emitted by dataSets.py generators
         "golang",     # stack_v3_gen (Go files tagged "Golang")
         "star_coder", # star_coder_gen (bigcode/starcoderdata)
+        # stack-v3 real programming languages (CODE_LANGS in tok/loadData/dataSets.py)
+        "objective-c++", "r", "julia", "matlab", "powershell", "groovy", "tcl",
+        "zig", "nim", "crystal", "d", "v", "odin", "gleam", "mojo", "carbon",
+        "hare", "jai", "pony", "chapel", "vala", "cython",
+        "haskell", "ocaml", "f#", "erlang", "elixir", "clojure", "elm",
+        "purescript", "rescript", "reason", "racket", "scheme", "common lisp",
+        "emacs lisp", "apl", "j", "raku",
+        "assembly", "cuda", "glsl", "hlsl", "opencl", "webassembly",
+        "verilog", "systemverilog", "vhdl",
+        "fortran", "pascal", "ada", "cobol", "visual basic .net",
+        "solidity", "vyper", "move", "cairo", "noir",
+        "q#", "starlark", "ballerina",
     }
     return {cid for name, cid in cat_map.items() if name.strip().lower() in code_names}
 

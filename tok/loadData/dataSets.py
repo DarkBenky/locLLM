@@ -12,7 +12,34 @@ API = "http://91.98.145.193:8823/"
 CACHE_DIR = "data/"
 CHECKPOINT_FILE = "checkpoint.json"
 
-COMMON_LANG = ["Python", "JavaScript", "C++", "Java", "C", "Go", "TypeScript", "Ruby", "Rust", "PHP", "Swift", "C#", "Kotlin", "Scala", "Dart", "Objective-C", "Perl", "Lua", "SQL", "HTML", "CSS", "JSON", "YAML", "Markdown", "XML"]
+# Real programming languages used as the stack-v3 filter.
+# https://huggingface.co/datasets/HuggingFaceCode/stack-v3-train/resolve/main/stats/train/stats_by_language.json
+CODE_LANGS = [
+    # mainstream
+    "Python", "JavaScript", "TypeScript", "C", "C++", "C#", "Java", "Go",
+    "Rust", "Ruby", "PHP", "Swift", "Kotlin", "Scala", "Dart", "Lua", "Perl",
+    "Objective-C", "Objective-C++", "SQL", "R", "Julia", "MATLAB",
+    "PowerShell", "Groovy", "Tcl",
+    # systems / modern
+    "Zig", "Nim", "Crystal", "D", "V", "Odin", "Gleam", "Mojo", "Carbon",
+    "Hare", "Jai", "Pony", "Chapel", "Vala", "Cython",
+    # functional
+    "Haskell", "OCaml", "F#", "Erlang", "Elixir", "Clojure", "Elm",
+    "PureScript", "ReScript", "Reason", "Racket", "Scheme", "Common Lisp",
+    "Emacs Lisp", "APL", "J", "Raku",
+    # low-level / graphics / hardware
+    "Assembly", "Cuda", "GLSL", "HLSL", "OpenCL", "WebAssembly",
+    "Verilog", "SystemVerilog", "VHDL",
+    # scientific / legacy
+    "Fortran", "Pascal", "Ada", "COBOL", "Visual Basic .NET",
+    # smart contracts
+    "Solidity", "Vyper", "Move", "Cairo", "Noir",
+    # misc
+    "Q#", "Starlark", "Ballerina",
+]
+
+# Languages whose files keep their own category name; everything else -> "OtherLanguage"
+COMMON_LANG = CODE_LANGS + ["HTML", "CSS", "JSON", "YAML", "Markdown", "XML"]
 
 pipe = DatasetPipeline(api=API, checkpoint_file=CHECKPOINT_FILE)
 
@@ -152,7 +179,7 @@ def code_alchemy_gen(configs=None):
                 continue
 
 
-@pipe.register("evo_code_instruction")
+# @pipe.register("evo_code_instruction") # exhausted dataset
 def evo_code_instruction_gen():
     ds = load_dataset("nickrosh/Evol-Instruct-Code-80k-v1", split="train", streaming=True, cache_dir=CACHE_DIR)
     for repo in ds:
@@ -168,8 +195,9 @@ def evo_code_instruction_gen():
             continue
 
 
-@pipe.register("ultrachat")
+# @pipe.register("ultrachat") # exhausted dataset
 def ultrachat_gen():
+    
     ds = load_dataset("HuggingFaceH4/ultrachat_200k", split="train_gen", streaming=True, cache_dir=CACHE_DIR)
     for repo in ds:
         try:
@@ -182,7 +210,7 @@ def ultrachat_gen():
             continue
 
 
-@pipe.register("distillation")
+# @pipe.register("distillation") # exhausted dataset
 def distillation_qwen_kimi_glm_gen():
     ds = load_dataset("r0b0tlab/qwen3.8-max-glm5.2-kimi-k3-distillation", "sft_balanced", streaming=True, cache_dir=CACHE_DIR)
     for repo in ds:
@@ -198,7 +226,7 @@ def distillation_qwen_kimi_glm_gen():
             continue
 
 
-@pipe.register("codealpha")
+# @pipe.register("codealpha") # exhausted dataset
 def codealpha_gen():
     ds = load_dataset("theblackcat102/evol-codealpaca-v1", split="train", streaming=True, cache_dir=CACHE_DIR)
     for repo in ds:
@@ -214,7 +242,7 @@ def codealpha_gen():
             continue
 
 
-@pipe.register("small_talk")
+# @pipe.register("small_talk") # exhausted dataset
 def small_talk_gen():
     ds = load_dataset("HuggingFaceTB/smoltalk", "all", split="train", streaming=True, cache_dir=CACHE_DIR)
     for repo in ds:
@@ -228,7 +256,7 @@ def small_talk_gen():
             continue
 
 
-@pipe.register("code_security")
+# @pipe.register("code_security") # exhausted dataset
 def code_security_gen():
     ds = load_dataset("ayshajavd/code-security-vulnerability-dataset", split="train", streaming=True, cache_dir=CACHE_DIR)
     for repo in ds:
@@ -256,7 +284,7 @@ def code_security_gen():
             continue
 
 
-@pipe.register("tiny_codes")
+# @pipe.register("tiny_codes") # exhausted dataset
 def tiny_codes_gen():
     ds = load_dataset("nampdn-ai/tiny-codes", split="train", streaming=True, cache_dir=CACHE_DIR)
     for repo in ds:
@@ -273,7 +301,7 @@ def tiny_codes_gen():
             continue
 
 
-@pipe.register("code_gen")
+# @pipe.register("code_gen") # exhausted dataset
 def code_gen():
     ds = load_dataset("pengyunie/codesearchnet-codegen", split="train", streaming=True, cache_dir=CACHE_DIR)
     for repo in ds:
@@ -290,7 +318,7 @@ def code_gen():
             continue
 
 
-@pipe.register("nemotron_codealpaca")
+# @pipe.register("nemotron_codealpaca") # exhausted dataset
 def nemotron_codealpaca_gen():
     ds = load_dataset("JessieWei/GLM-5.2-FP8-nemotron-codealpaca", split="train", streaming=True, cache_dir=CACHE_DIR)
     for repo in ds:
@@ -305,7 +333,7 @@ def nemotron_codealpaca_gen():
             continue
 
 
-@pipe.register("code_feedback")
+# @pipe.register("code_feedback") # exhausted dataset
 def code_feedback_gen():
     ds = load_dataset("m-a-p/CodeFeedback-Filtered-Instruction", split="train", streaming=True, cache_dir=CACHE_DIR)
     for repo in ds:
@@ -351,7 +379,7 @@ def agent_trove_gen():
             continue
 
 
-langs = "Python, C, Go, Golang"
+langs = CODE_LANGS
 
 
 def stack_v3_gen(supported_langs=None):
@@ -391,7 +419,7 @@ def reasoning_gen():
         except:
             continue
 
-@pipe.register("claude")
+# @pipe.register("claude") # exhausted
 def claude_gen():
     ds = load_dataset("clzoro/Claude-Distills", split="train", streaming=True, cache_dir=CACHE_DIR)
     for repo in ds:
@@ -409,7 +437,7 @@ def claude_gen():
             continue
 
 
-@pipe.register("rose")
+# @pipe.register("rose") # exhausted
 def rose_gen():
     ds = load_dataset("CL-From-Nothing/rose_code_samples", split="train", streaming=True, cache_dir=CACHE_DIR)
     for repo in ds:
@@ -430,7 +458,7 @@ def rose_gen():
         except:
             continue
 
-@pipe.register("google_defect")
+# @pipe.register("google_defect") # exhausted
 def google_defect_gen():
     ds = load_dataset("google/code_x_glue_cc_defect_detection", split="train", streaming=True, cache_dir=CACHE_DIR)
     for repo in ds:
@@ -452,7 +480,7 @@ def google_defect_gen():
         except:
             continue
 
-@pipe.register("google_function_clone")
+# @pipe.register("google_function_clone") # exhausted
 def google_function_clone_gen():
     ds = load_dataset("google/code_x_glue_cc_clone_detection_big_clone_bench", split="train", streaming=True, cache_dir=CACHE_DIR)
     for repo in ds:
@@ -476,7 +504,7 @@ def google_function_clone_gen():
             "category": "code_clone_detection",
         }
 
-@pipe.register("code_instruction")
+# @pipe.register("code_instruction") # exhausted
 def code_instruction_gen():
     ds = load_dataset("TokenBender/code_instructions_122k_alpaca_style", split="train", streaming=True, cache_dir=CACHE_DIR)
     for repo in ds:
@@ -492,7 +520,7 @@ def code_instruction_gen():
             continue
 
 
-@pipe.register("fineweb", prefetch=8)
+# @pipe.register("fineweb", prefetch=8) # exhausted
 def fineweb_gen():
     ds = load_dataset("m-a-p/FineFineWeb", split="train", streaming=True, cache_dir=CACHE_DIR)
     for repo in ds:
@@ -507,7 +535,7 @@ def fineweb_gen():
             continue
 
 
-@pipe.register("bigvul")
+# @pipe.register("bigvul") # exhausted
 def bigvul_gen():
     ds = load_dataset("bstee615/bigvul", split="train", streaming=True, cache_dir=CACHE_DIR)
     for repo in ds:
@@ -560,8 +588,10 @@ def commitpackft_gen(max_chars=10000):
             continue
 
 
-@pipe.register("x_coder")
-def x_coder_gen(max_chars=12000):
+# @pipe.register("x_coder") # exhausted
+def x_coder_gen(max_chars=200_000):
+    # X-Coder samples are long reasoning CoT (median ~56k chars, p90 ~101k).
+    # The training side chunks samples longer than block_size, so a generous cap is fine.
     ds = load_dataset("IIGroup/X-Coder-SFT-376k", split="unique_prompt_202k",
                       streaming=True, cache_dir=CACHE_DIR)
     for repo in ds:
