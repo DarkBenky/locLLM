@@ -90,7 +90,9 @@ func handleReceiveData(c *echo.Context) error {
 			return err
 		}
 		categoryStore.mu.Lock()
-		categoryStore.Categories[req.Category] = idx
+		if idx != categoryStore.Categories["Other"] {
+			categoryStore.Categories[req.Category] = idx
+		}
 		categoryStore.mu.Unlock()
 		id = idx
 	}

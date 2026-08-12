@@ -95,6 +95,20 @@ func Open(dbPath, filePath string) (*DB, error) {
 		return nil, fmt.Errorf("seed cursor: %w", err)
 	}
 
+	if _, err := sqlDB.Exec("INSERT OR IGNORE INTO categories (name) VALUES ('Other')"); err != nil {
+		sqlDB.Close()
+		return nil, fmt.Errorf("seed Other category: %w", err)
+	}
+	var maxID int
+	if err := sqlDB.QueryRow("SELECT COALESCE(MAX(id), 0) FROM categories").Scan(&maxID); err != nil {
+		sqlDB.Close()
+		return nil, fmt.Errorf("check categories: %w", err)
+	}
+	if maxID > 255 {
+		sqlDB.Close()
+		return nil, fmt.Errorf("category id %d exceeds 255; shrink the categories table before starting", maxID)
+	}
+
 	// Migration: add content_hash column for deduplication (ignore error if column exists)
 	sqlDB.Exec("ALTER TABLE records ADD COLUMN content_hash TEXT")
 	sqlDB.Exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_records_content_hash ON records(content_hash)")
@@ -147,8 +161,12 @@ func (d *DB) GetOrCreateCategory(name string) (uint8, error) {
 	if err := d.db.QueryRow("SELECT COUNT(*) FROM categories").Scan(&count); err != nil {
 		return 0, fmt.Errorf("count categories: %w", err)
 	}
-	if count >= 256 {
-		return 0, fmt.Errorf("category limit reached (256)")
+	if count >= 255 {
+		var otherID uint8
+		if err := d.db.QueryRow("SELECT id FROM categories WHERE name = 'Other'").Scan(&otherID); err != nil {
+			return 0, fmt.Errorf("lookup Other category: %w", err)
+		}
+		return otherID, nil
 	}
 
 	result, err := d.db.Exec("INSERT INTO categories (name) VALUES (?)", name)
