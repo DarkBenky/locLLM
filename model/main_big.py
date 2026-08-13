@@ -283,14 +283,20 @@ def _fetch_samples_with_retry(count: int) -> list[tuple[int, list[int]]]:
     )
 
 
-def _fim_split(L: int):
-    pre_end = random.randint(L // 4, 7 * L // 10)
-    mid_max = min(L - pre_end - 4, L // 4)
-    if mid_max < 16:
-        return None
-    mid_len = random.randint(min(64, mid_max), mid_max)
-    mid_end = min(pre_end + mid_len, L - 4)
-    return pre_end, mid_end
+def _fim_splits(L: int, n: int):
+    cut = random.randint(L // 4, 7 * L // 10)
+    splits = []
+    for i in range(n):
+        remaining = L - cut
+        reserve = 16 * (n - i - 1) + 4
+        mid_max = min(L // 4, remaining - reserve)
+        if mid_max < 16:
+            break
+        mid_len = random.randint(min(64, mid_max), mid_max)
+        mid_end = cut + mid_len
+        splits.append((cut, mid_end))
+        cut = mid_end
+    return splits
 
 
 def _fim_variant(seq, pre_end: int, mid_end: int):
@@ -332,8 +338,10 @@ def _process_sample(tokens: list, cat_id: int, block_size: int):
             tokens = tokens[:fim_cap]
         seq = torch.tensor(tokens, dtype=torch.long)
         L = len(tokens)
-        split1 = _fim_split(L)
-        if split1 is None:
+        splits = _fim_splits(L, FIM_VARIANTS)
+        if not splits:
+            splits = _fim_splits(L, 1)
+        if not splits:
             do_fim = False
 
     if not do_fim:
@@ -346,17 +354,6 @@ def _process_sample(tokens: list, cat_id: int, block_size: int):
             mt = None
         return [(torch.tensor(toks, dtype=torch.long), mt, False)]
 
-    splits = [split1]
-    seen = {split1}
-    attempts = 0
-    while len(splits) < FIM_VARIANTS and attempts < FIM_VARIANTS * 4:
-        attempts += 1
-        s = _fim_split(L)
-        if s is None:
-            s = split1
-        if s not in seen:
-            seen.add(s)
-            splits.append(s)
     variants = []
     for s in splits:
         vseq, vmt = _fim_variant(seq, s[0], s[1])
