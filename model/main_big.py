@@ -56,7 +56,7 @@ WEIGHT_DECAY = 0.1
 GRAD_CLIP = 1.0
 CHATML_MASK_PROB = 0.8
 FIM_RATIO = 0.95
-FIM_VARIANTS = 2  # FIM samples generated per code sample
+FIM_VARIANTS = 1  # FIM samples generated per code sample
 LOSS_CHUNK = 1024  # sequence-chunk size for head+loss (bounds logits memory)
 
 LOG_EVERY = 10
