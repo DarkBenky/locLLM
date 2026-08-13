@@ -137,7 +137,7 @@ def fetch_swh_source(blob_id):
         return None
 
 
-@pipe.register("code_alchemy")
+# @pipe.register("code_alchemy") # too much data from this dataset
 def code_alchemy_gen(configs=None):
     if configs is None:
         configs = ["code-enhance", "code-qa", "code-dev", "code-dialogue", "code-trace"]
