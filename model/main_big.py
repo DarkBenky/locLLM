@@ -32,7 +32,9 @@ TOKENIZER_MODEL_PATH = "../tok/tokenize/tokenizer_models/tokenizer.model"
 
 BLOCK_SIZE = 4096
 BATCH_SIZE = 4
-GRAD_ACCUM = 3
+GRAD_ACCUM = 6  # effective batch = BATCH_SIZE * BLOCK_SIZE * GRAD_ACCUM (~98k tokens/step)
+LOSS_SKIP_THRESHOLD = 5.0  # per-micro-step loss above this = corrupted batch -> skip it
+MIN_SAMPLE_TOKENS = 64  # drop degenerate/short samples (loss over a few tokens is pure noise)
 DIM = 1024
 N_LAYERS = 128
 OLD_N_LAYERS = 26
@@ -171,7 +173,10 @@ def decode_record(data: bytes) -> tuple[int, list[int]]:
     tokens = []
     offset = 9
     for _ in range(token_count):
-        tokens.append(struct.unpack_from("<H", data, offset)[0])
+        t = struct.unpack_from("<H", data, offset)[0]
+        if t >= VOCAB_SIZE:
+            raise ValueError(f"token id {t} out of range (vocab {VOCAB_SIZE})")
+        tokens.append(t)
         offset += 2
     return category, tokens
 
@@ -216,7 +221,18 @@ def get_next_samples(count: int) -> list[tuple[int, list[int]]]:
     endpoint = "/api/get-next-samples-random" if RANDOM_SAMPLING else "/api/get-next-samples"
     res = _request_with_retry(API + endpoint, params={"sample_count": count})
     raw_samples = res.json().get("samples", [])
-    return [decode_record(base64.b64decode(raw)) for raw in raw_samples]
+    samples = []
+    dropped = 0
+    for raw in raw_samples:
+        try:
+            samples.append(decode_record(base64.b64decode(raw)))
+        except ValueError as e:
+            dropped += 1
+            if dropped <= 5:
+                print(f"  dropped invalid record: {e}")
+    if dropped:
+        print(f"  dropped {dropped}/{len(raw_samples)} invalid records")
+    return samples
 
 
 def get_code_category_ids() -> set[int]:
@@ -324,7 +340,7 @@ def _fim_variant(seq, pre_end: int, mid_end: int):
 def _process_sample(tokens: list, cat_id: int, block_size: int):
     global _sample_pool
     is_code = cat_id in CODE_CATEGORY_IDS
-    do_fim = is_code and random.random() < FIM_RATIO and len(tokens) >= 64
+    do_fim = is_code and random.random() < FIM_RATIO and len(tokens) >= MIN_SAMPLE_TOKENS
 
     if do_fim:
         fim_cap = block_size - 3
@@ -400,7 +416,7 @@ def _build_batch_from_pool(batch_size: int, block_size: int):
             else:
                 print(f"WARNING: pool full ({MAX_CACHE_SIZE}), discarding tail of sample")
             tokens = tokens[:block_size + 1]
-        if len(tokens) >= 4:
+        if len(tokens) >= MIN_SAMPLE_TOKENS:
             trimmed.append((cat, tokens))
 
     trimmed.sort(key=lambda c: len(c[1]))
@@ -445,12 +461,16 @@ def make_batch(batch_size: int, block_size: int):
 
 
 def get_lr(step: int, step0: int = 0) -> float:
-    s = step - step0
+    # Wake-up phase (fresh on each resume, relative to start_step): new/upscaled
+    # weights get a short burst at WAKEUP_LR before the main schedule takes over.
+    s_rel = step - step0
     wake = VOCAB_WAKEUP_STEPS if VOCAB_RESIZED else WAKEUP_STEPS
-    if (UPSCALED or VOCAB_RESIZED) and s < wake:
-        return WAKEUP_LR * min((s + 1) / WARMUP_STEPS, 1.0)
-    if UPSCALED or VOCAB_RESIZED:
-        s = s - wake
+    if (UPSCALED or VOCAB_RESIZED) and s_rel < wake:
+        return WAKEUP_LR * min((s_rel + 1) / WARMUP_STEPS, 1.0)
+
+    # Main cosine schedule is based on the ABSOLUTE step so it never restarts at
+    # MAX_LR on resume (previously the schedule reset every run, pinning LR ~max).
+    s = step
     if s < WARMUP_STEPS:
         lr = MAX_LR * (s + 1) / WARMUP_STEPS
     elif s >= LR_DECAY_STEPS:
@@ -603,8 +623,13 @@ if __name__ == "__main__":
                     _head_ce, hidden[:, s:e], yc, use_reentrant=False))
                 counts.append(int((yc != -100).sum()))
             loss = sum(losses) / sum(counts)
-        scaler.scale(loss / GRAD_ACCUM).backward()
         loss_val = loss.item()
+        if not math.isfinite(loss_val) or loss_val > LOSS_SKIP_THRESHOLD:
+            # corrupted/degenerate batch: don't backprop or accumulate it
+            print(f"  skipped micro-step: loss {loss_val:.2f} (threshold {LOSS_SKIP_THRESHOLD})")
+            del hidden, loss, x, y
+            return 0.0, 0.0, 0.0, 0, {}
+        scaler.scale(loss / GRAD_ACCUM).backward()
         with torch.no_grad():
             mask = y != -100
             n_tok = mask.sum().item()
@@ -647,7 +672,7 @@ if __name__ == "__main__":
             if not fresh:
                 break
             for cat, tokens in fresh:
-                if len(tokens) >= 64:
+                if len(tokens) >= MIN_SAMPLE_TOKENS:
                     eval_set.append((cat, tokens[:BLOCK_SIZE]))
         print(f"Cached eval set: {len(eval_set)} samples (fixed for this run)")
 
@@ -725,9 +750,20 @@ if __name__ == "__main__":
         if accum_tokens == 0:
             continue
 
+        cur_loss = accum_loss_w / max(accum_tokens, 1)
+        cur_ppl = math.exp(min(cur_loss, 20))
+        cur_acc = accum_acc / max(accum_tokens, 1)
+
         lr = get_lr(step, start_step)
         for group in optimizer.param_groups:
             group["lr"] = lr
+
+        if not math.isfinite(cur_loss):
+            print(f"WARNING: step {step}: non-finite loss {cur_loss} — zeroing grads, skipping step")
+            optimizer.zero_grad(set_to_none=True)
+            if USE_SCALER:
+                scaler.update()
+            continue
 
         scaler.unscale_(optimizer)
         grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), GRAD_CLIP)
@@ -738,9 +774,6 @@ if __name__ == "__main__":
             torch.cuda.synchronize()
         dt = time.time() - t0
 
-        cur_loss = accum_loss_w / max(accum_tokens, 1)
-        cur_ppl = math.exp(min(cur_loss, 20))
-        cur_acc = accum_acc / max(accum_tokens, 1)
         cur_grad = grad_norm.item()
         if not math.isfinite(cur_grad):
             print(f"WARNING: step {step}: non-finite grad_norm={cur_grad} — "

@@ -557,7 +557,7 @@ def bigvul_gen():
             continue
 
 
-@pipe.register("commitpackft")
+# @pipe.register("commitpackft") # we need FIM data
 def commitpackft_gen(max_chars=10000):
     ds = load_dataset(
         "json",
@@ -612,7 +612,7 @@ def x_coder_gen(max_chars=200_000):
             continue
 
 
-@pipe.register("code_search_net")
+# @pipe.register("code_search_net") # need more FIM data
 def code_search_net_gen():
     ds = load_dataset("code-search-net/code_search_net", "all", split="train", streaming=True, cache_dir=CACHE_DIR)
     for repo in ds:
