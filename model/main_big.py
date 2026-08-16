@@ -16,6 +16,10 @@ import struct
 import base64
 import queue
 import threading
+import sys
+import json
+import subprocess
+import tempfile
 
 import requests
 import sentencepiece as spm
@@ -67,20 +71,12 @@ EVAL_EVERY = 250
 EVAL_SAMPLES = 8
 CKPT_DIR = "./checkpoints"
 
-DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-
 PRECISION = "bf16"
 MODEL_DTYPE = torch.bfloat16 if PRECISION == "bf16" else torch.float32
 
-if DEVICE == "cuda" and PRECISION == "bf16":
-    AUTOCAST_DTYPE = torch.bfloat16
-    USE_SCALER = False
-elif DEVICE == "cuda":
-    AUTOCAST_DTYPE = torch.float16
-    USE_SCALER = True
-else:
-    AUTOCAST_DTYPE = torch.float32
-    USE_SCALER = False
+DEVICE = "cpu"
+AUTOCAST_DTYPE = torch.float32
+USE_SCALER = False
 
 sp = spm.SentencePieceProcessor(model_file=TOKENIZER_MODEL_PATH)
 BASE_VOCAB = sp.get_piece_size()
@@ -98,6 +94,31 @@ ROLE_ASSISTANT = CHATML_IDS["roles"]["assistant"]
 UPSCALED = False
 VOCAB_RESIZED = False
 CKPT_PREFIX = "step_big_"
+
+
+def _select_gpu_interactive():
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False)
+    tmp_path = tmp.name
+    tmp.close()
+    code = (
+        "import json\n"
+        "from gpuSeletor.main import select_gpus_with_config\n"
+        f"result = select_gpus_with_config()\n"
+        f"with open({tmp_path!r}, 'w') as f:\n"
+        "    json.dump(result, f)\n"
+    )
+    try:
+        subprocess.run([sys.executable, "-c", code], cwd=script_dir, check=True)
+        with open(tmp_path) as f:
+            result = json.load(f)
+    except Exception as e:
+        print(f"WARNING: GPU selection failed ({e}); falling back to defaults")
+        result = []
+    finally:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+    return result if isinstance(result, list) else []
 
 
 def _step_from_name(f):
@@ -160,6 +181,38 @@ def _splice_optimizer(old_opt_sd, model, optimizer, old_vocab):
     sd = dict(old_opt_sd)
     sd["state"] = state
     return sd
+
+
+def _is_8bit_optimizer(opt) -> bool:
+    return opt.__class__.__name__ == "AdamW8bit"
+
+
+def _opt_state_is_8bit(opt_sd) -> bool:
+    for v in opt_sd.get("state", {}).values():
+        if isinstance(v, dict):
+            return "state1" in v or "qmap1" in v
+    return False
+
+
+def _load_optimizer_state(optimizer, ckpt, model, old_vocab=None) -> bool:
+    if "optimizer" not in ckpt:
+        return False
+    old_sd = ckpt["optimizer"]
+    want_8bit = _is_8bit_optimizer(optimizer)
+    if _opt_state_is_8bit(old_sd) != want_8bit:
+        print("  WARNING: saved optimizer state (8-bit vs fp32) does not match the "
+              "selected optimizer — starting optimizer fresh (model weights unchanged)")
+        return False
+    try:
+        if old_vocab is not None and not want_8bit:
+            optimizer.load_state_dict(_splice_optimizer(old_sd, model, optimizer, old_vocab))
+        else:
+            optimizer.load_state_dict(old_sd)
+        return True
+    except Exception as e:
+        print(f"  WARNING: optimizer state not loaded ({e.__class__.__name__}: {e}) — "
+              f"starting optimizer fresh (model weights unchanged)")
+        return False
 
 
 def decode_record(data: bytes) -> tuple[int, list[int]]:
@@ -483,6 +536,39 @@ def get_lr(step: int, step0: int = 0) -> float:
 
 
 if __name__ == "__main__":
+    selected = _select_gpu_interactive()
+    if len(selected) > 1:
+        print(f"NOTE: multi-GPU training is not supported yet — using only the "
+              f"first selected GPU ({selected[0]['name']})")
+        selected = selected[:1]
+    if not selected:
+        print("No GPU selected — falling back to defaults "
+              f"(GPU 0, batch_size={BATCH_SIZE}, accum={GRAD_ACCUM})")
+        selected = [{"name": "GPU 0", "vram_size": 0.0, "index": 0,
+                     "batch_size": BATCH_SIZE, "accumulation_steps": GRAD_ACCUM,
+                     "optimizer": "fp32"}]
+
+    gpu = selected[0]
+    BATCH_SIZE = int(gpu["batch_size"])
+    GRAD_ACCUM = int(gpu["accumulation_steps"])
+    OPTIMIZER = gpu.get("optimizer", "fp32")
+    print(f"\nTraining on: {gpu['name']} ({gpu.get('vram_size', 0):.1f} GB) | "
+          f"batch_size={BATCH_SIZE} | accum={GRAD_ACCUM} | optimizer={OPTIMIZER} | "
+          f"effective batch ≈ {BATCH_SIZE * BLOCK_SIZE * GRAD_ACCUM:,} tokens/step")
+
+    os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu["index"])
+
+    DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+    if DEVICE == "cuda" and PRECISION == "bf16":
+        AUTOCAST_DTYPE = torch.bfloat16
+        USE_SCALER = False
+    elif DEVICE == "cuda":
+        AUTOCAST_DTYPE = torch.float16
+        USE_SCALER = True
+    else:
+        AUTOCAST_DTYPE = torch.float32
+        USE_SCALER = False
+
     CODE_CATEGORY_IDS = get_code_category_ids()
     print(f"Code categories for FIM: {len(CODE_CATEGORY_IDS)} IDs")
 
@@ -506,11 +592,26 @@ if __name__ == "__main__":
     for name, p in model.named_parameters():
         (no_decay if p.ndim < 2 else decay).append(p)
 
-    optimizer = torch.optim.AdamW(
-        [{"params": decay, "weight_decay": WEIGHT_DECAY},
-         {"params": no_decay, "weight_decay": 0.0}],
-        lr=MAX_LR, betas=(0.9, 0.95),
-    )
+    if OPTIMIZER == "8bit":
+        try:
+            import bitsandbytes as bnb
+        except ImportError:
+            raise SystemExit(
+                "AdamW 8-bit selected, but 'bitsandbytes' is not installed.\n"
+                "Install it with: pip install bitsandbytes"
+            )
+        optimizer = bnb.optim.AdamW8bit(
+            [{"params": decay, "weight_decay": WEIGHT_DECAY},
+             {"params": no_decay, "weight_decay": 0.0}],
+            lr=MAX_LR, betas=(0.9, 0.95),
+        )
+        print("Using 8-bit AdamW optimizer (bitsandbytes)", flush=True)
+    else:
+        optimizer = torch.optim.AdamW(
+            [{"params": decay, "weight_decay": WEIGHT_DECAY},
+             {"params": no_decay, "weight_decay": 0.0}],
+            lr=MAX_LR, betas=(0.9, 0.95),
+        )
 
     start_step = 0
     os.makedirs(CKPT_DIR, exist_ok=True)
@@ -533,12 +634,11 @@ if __name__ == "__main__":
                 print(f"Resizing vocab {ckpt_vocab} -> {VOCAB_SIZE}", flush=True)
                 resize_vocab_embeddings(model, sd, ckpt_vocab)
                 VOCAB_RESIZED = True
-                if "optimizer" in ckpt:
-                    optimizer.load_state_dict(_splice_optimizer(ckpt["optimizer"], model, optimizer, ckpt_vocab))
+                _load_optimizer_state(optimizer, ckpt, model, old_vocab=ckpt_vocab)
             else:
                 model.load_state_dict(sd)
                 if "optimizer" in ckpt:
-                    optimizer.load_state_dict(ckpt["optimizer"])
+                    _load_optimizer_state(optimizer, ckpt, model)
                 else:
                     UPSCALED = True
             start_step = ckpt["step"] + 1
@@ -562,7 +662,7 @@ if __name__ == "__main__":
             else:
                 model.load_state_dict(sd)
                 if "optimizer" in ckpt:
-                    optimizer.load_state_dict(ckpt["optimizer"])
+                    _load_optimizer_state(optimizer, ckpt, model)
                 start_step = ckpt["step"] + 1
                 print(f"Resuming from step {start_step}")
         else:
@@ -582,6 +682,7 @@ if __name__ == "__main__":
         "wakeup_steps": WAKEUP_STEPS, "wakeup_lr": WAKEUP_LR,
         "max_lr": MAX_LR, "min_lr": MIN_LR, "max_steps": MAX_STEPS,
         "lr_decay_steps": LR_DECAY_STEPS, "params": n_params,
+        "optimizer": OPTIMIZER,
     })
 
     model.train()
