@@ -1,54 +1,28 @@
 from datasets import load_dataset
 
-from parseCode import SampleUnparsed, parseCodeSample
+from parseCode import LANG_PATTERNS, SampleUnparsed, parseCodeSample
 
 CACHE_DIR = "data/"
 
-STACKV3_LANG_MAP = {
-    "Python": "python",
-    "JavaScript": "javascript",
-    "TypeScript": "typescript",
-    "C": "c",
-    "C++": "cpp",
-    "C#": "csharp",
-    "Java": "java",
-    "Go": "go",
-    "Rust": "rust",
-    "Ruby": "ruby",
-    "PHP": "php",
-    "Swift": "swift",
-    "Kotlin": "kotlin",
-    "Scala": "scala",
-    "Lua": "lua",
-    "Perl": "perl",
-    "Objective-C": "objc",
-    "Shell": "bash",
-    "Cuda": "cuda",
-    "GLSL": "glsl",
-    "HLSL": "hlsl",
-    "OpenCL": "opencl",
-    "Zig": "zig",
-    "Nim": "nim",
-    "Odin": "odin",
-    "WGSL": "wgsl",
-    "TSX": "tsx",
-    "Solidity": "solidity",
-    "Fortran": "fortran",
-    "Fortran Free Form": "fortran",
-    "Erlang": "erlang",
-    "Julia": "julia",
-    "Crystal": "crystal",
-    "OCaml": "ocaml",
-    "Haxe": "haxe",
-    "Gleam": "gleam",
-    "Verilog": "verilog",
-    "SystemVerilog": "systemverilog",
-    "Dart": "dart",
-    "R": "r",
-    "Mojo": "mojo",
+SUPPORTED = set(LANG_PATTERNS)
+
+ALIASES = {
+    "c++": "cpp",
+    "c#": "csharp",
+    "objective-c": "objc",
+    "objective-c++": "objc",
+    "shell": "bash",
+    "fortran free form": "fortran",
 }
 
-DEFAULT_SUPPORTED = set(STACKV3_LANG_MAP)
+DEFAULT_SUPPORTED = SUPPORTED | set(ALIASES)
+
+
+def resolve_lang(name):
+    key = name.strip().lower()
+    if key in SUPPORTED:
+        return key
+    return ALIASES.get(key)
 
 
 def stack_v3_gen(supported_langs=None):
@@ -61,7 +35,7 @@ def stack_v3_gen(supported_langs=None):
         try:
             for f in repo["files"]:
                 sv3_lang = f["language"]
-                parse_lang = STACKV3_LANG_MAP.get(sv3_lang)
+                parse_lang = resolve_lang(sv3_lang)
                 if parse_lang is None:
                     continue
                 if supported_langs is not None and sv3_lang.lower() not in supported_langs:

@@ -8,7 +8,6 @@ from datetime import datetime
 from pathlib import Path
 from pprint import pprint
 
-from parseCode import SampleUnparsed, parseCodeSample
 from db import CodeDB
 from stackV3 import stack_v3_fim_gen
 
@@ -97,19 +96,12 @@ if __name__ == "__main__":
     try:
         while True:
             code = next(codeGen)
-            res = parseCodeSample(SampleUnparsed(code["text"], code["lang"]))
-            if not isinstance(res, list):
-                res = [res]
-
             lang = code["lang"]
-            checkpoint[lang] = checkpoint.get(lang, 0) + len(res)
-            checkpoint[lang + "_char_count"] = checkpoint.get(lang + "_char_count", 0) + sum(len(r.code) for r in res)
+            checkpoint[lang] = checkpoint.get(lang, 0) + 1
+            checkpoint[lang + "_char_count"] = checkpoint.get(lang + "_char_count", 0) + len(code["text"])
 
-            embeddings = MODEL.encode([r.code for r in res])
-            for r, emb in zip(res, embeddings):
-                r.embedding = emb
-
-            db.add_many(res)
+            embedding = MODEL.encode(code["text"]).flatten()
+            db.add(code["text"], lang, code["hash"], embedding)
 
             iteration += 1
             checkpoint["step"] = iteration

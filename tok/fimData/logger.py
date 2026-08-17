@@ -58,11 +58,11 @@ def index():
         '<div class="card"><div class="label">%s</div><div class="value">%s</div></div>'
         % (label, value)
         for label, value in [
-            ("Files Processed", fmt(latest.get("step", 0))),
+            ("Chunks Processed", fmt(latest.get("step", 0))),
             ("DB Entries", fmt(latest.get("db_count", 0))),
             ("Chunks", fmt(total_chunks)),
             ("Chars", fmt(total_chars)),
-            ("Rate", rate_display),
+            ("Chunks/s", rate_display),
             ("Languages", str(len(langs))),
             ("Last Update", latest.get("time", "-")),
         ]
@@ -147,8 +147,8 @@ td.num{text-align:right;font-variant-numeric:tabular-nums}
 <div class="sub">Auto-refresh every 60s &mdash; last update: $last_update</div>
 <div class="cards">$cards</div>
 <div class="grid">
-<div class="chart-wrap"><h2>Progress (files &amp; DB entries)</h2><div class="chart-box"><canvas id="chProgress"></canvas></div></div>
-<div class="chart-wrap"><h2>Rate (files/s)</h2><div class="chart-box"><canvas id="chRate"></canvas></div></div>
+<div class="chart-wrap"><h2>Progress (chunks &amp; DB entries)</h2><div class="chart-box"><canvas id="chProgress"></canvas></div></div>
+<div class="chart-wrap"><h2>Rate (chunks/s)</h2><div class="chart-box"><canvas id="chRate"></canvas></div></div>
 </div>
 <div class="grid">
 <div class="chart-wrap"><h2>Chunks per language</h2><div class="chart-box"><canvas id="chLang"></canvas></div></div>
@@ -167,7 +167,7 @@ td.num{text-align:right;font-variant-numeric:tabular-nums}
 </div>
 </div>
 </div>
-<div class="footer">$total_steps files &mdash; $total_db db entries &mdash; $total_chunks chunks &mdash; data kept in memory on the logger</div>
+<div class="footer">$total_steps chunks processed &mdash; $total_db db entries &mdash; $total_chunks chunks &mdash; data kept in memory on the logger</div>
 <script>
 const allRows=Array.from(document.querySelectorAll("#tbody tr"));
 let curSort={col:1,dir:-1};
@@ -178,7 +178,7 @@ function applyFilter(){let q=(document.getElementById("search").value||"").toLow
 const grid={color:"#21262d"},tick={color:"#8b949e"};
 Chart.defaults.animation = false;
 new Chart(document.getElementById("chProgress"),{type:"line",data:{labels:$times,datasets:[{label:"Files",data:$steps,borderColor:"#58a6ff",backgroundColor:"#58a6ff22",fill:true,tension:0.2,pointRadius:0},{label:"DB entries",data:$dbs,borderColor:"#3fb950",backgroundColor:"#3fb95022",fill:true,tension:0.2,pointRadius:0}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:"#8b949e"}}},scales:{x:{grid:grid,ticks:tick},y:{grid:grid,ticks:tick}}}});
-new Chart(document.getElementById("chRate"),{type:"line",data:{labels:$times,datasets:[{label:"files/s",data:$rates,borderColor:"#d29922",backgroundColor:"#d2992222",fill:true,tension:0.2,pointRadius:0}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:"#8b949e"}}},scales:{x:{grid:grid,ticks:tick},y:{grid:grid,ticks:tick}}}});
+new Chart(document.getElementById("chRate"),{type:"line",data:{labels:$times,datasets:[{label:"chunks/s",data:$rates,borderColor:"#d29922",backgroundColor:"#d2992222",fill:true,tension:0.2,pointRadius:0}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:"#8b949e"}}},scales:{x:{grid:grid,ticks:tick},y:{grid:grid,ticks:tick}}}});
 new Chart(document.getElementById("chLang"),{type:"bar",data:{labels:$lang_labels,datasets:[{data:$lang_values,backgroundColor:"#58a6ff55",borderColor:"#58a6ff",borderWidth:1}]},options:{indexAxis:"y",responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:grid,ticks:tick},y:{grid:{display:false},ticks:{color:"#8b949e",font:{size:11}}}}}});
 new Chart(document.getElementById("chDonut"),{type:"doughnut",data:{labels:$lang_labels,datasets:[{data:$lang_values,backgroundColor:$lang_colors,borderColor:"#161b22",borderWidth:2}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:"#8b949e",font:{size:11}}}}}});
 new Chart(document.getElementById("chChars"),{type:"bar",data:{labels:$char_labels,datasets:[{data:$char_values,backgroundColor:"#3fb95055",borderColor:"#3fb950",borderWidth:1}]},options:{indexAxis:"y",responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:grid,ticks:{color:"#8b949e",callback:v=>v>=1e9?(v/1e9).toFixed(1)+"B":v>=1e6?(v/1e6).toFixed(1)+"M":v>=1e3?(v/1e3).toFixed(1)+"K":v}},y:{grid:{display:false},ticks:{color:"#8b949e",font:{size:11}}}}}});

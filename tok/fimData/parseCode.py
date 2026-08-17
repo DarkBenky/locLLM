@@ -207,14 +207,15 @@ def splitByTopLevel(code: str, lang: str) -> List[str]:
     return splitByTopLevelRegex(code, lang)
 
 def parseCodeSample(sample: SampleUnparsed) -> List[ParseResult] | ParseResult:
+    lang = sample.lang.strip().lower()
     code = sample.codeFileContent
 
-    chunks = splitByTopLevel(code, sample.lang)
+    chunks = splitByTopLevel(code, lang)
 
     if len(chunks) == 1:
-        return ParseResult(chunks[0], sample.lang)
+        return ParseResult(chunks[0], lang)
 
-    parsed = [ParseResult(chunk, sample.lang) for chunk in chunks]
+    parsed = [ParseResult(chunk, lang) for chunk in chunks]
     return parsed
 
 def parseCodeFile(sample: SampleFile) -> List[ParseResult] | ParseResult:
