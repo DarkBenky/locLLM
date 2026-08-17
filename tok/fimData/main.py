@@ -1,7 +1,16 @@
 
 import argparse
+import json
 import sys
+import time
+import urllib.request
+from datetime import datetime
 from pathlib import Path
+from pprint import pprint
+
+from parseCode import SampleUnparsed, parseCodeSample
+from db import CodeDB
+from stackV3 import stack_v3_fim_gen
 
 sys.path.append(str(Path(__file__).resolve().parents[2] / "model"))
 from gpuSeletor.main import select_only_gpu
@@ -9,6 +18,30 @@ from gpuSeletor.main import select_only_gpu
 from model import build_model
 
 MODEL = None
+DB_PATH = "/media/user/2TB Clear/codeDB/db.db"
+CHECKPOINT_PATH = "./checkpoint.json"
+LOGGER_URL = "http://127.0.0.1:4242"
+
+
+def send_metrics(checkpoint, db_count, rate=None):
+    payload = {
+        "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "step": checkpoint.get("step", 0),
+        "db_count": db_count,
+        "rate": rate,
+        "langs": {k: v for k, v in checkpoint.items() if k != "step" and not k.endswith("_char_count")},
+        "char_counts": {k: v for k, v in checkpoint.items() if k.endswith("_char_count")},
+    }
+    req = urllib.request.Request(
+        LOGGER_URL + "/metrics",
+        data=json.dumps(payload).encode(),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        urllib.request.urlopen(req, timeout=5)
+    except Exception:
+        pass
 
 def build():
     parser = argparse.ArgumentParser(description="FIM data embedding with GPU selection")
@@ -41,4 +74,57 @@ def build():
 
 if __name__ == "__main__":
     MODEL = build()
+
+    if not Path(CHECKPOINT_PATH).exists():
+        with open(CHECKPOINT_PATH, "w") as f:
+            json.dump({"step": 0}, f)
+    with open(CHECKPOINT_PATH) as f:
+        checkpoint = json.load(f)
+    step = checkpoint.get("step", 0)
+
+    db = CodeDB(DB_PATH)
+    start_time = time.time()
+    send_metrics(checkpoint, db.count())
+
+    codeGen = stack_v3_fim_gen()
+    for _ in range(step):
+        try:
+            next(codeGen)
+        except StopIteration:
+            break
+
+    iteration = step
+    try:
+        while True:
+            code = next(codeGen)
+            res = parseCodeSample(SampleUnparsed(code["text"], code["lang"]))
+            if not isinstance(res, list):
+                res = [res]
+
+            lang = code["lang"]
+            checkpoint[lang] = checkpoint.get(lang, 0) + len(res)
+            checkpoint[lang + "_char_count"] = checkpoint.get(lang + "_char_count", 0) + sum(len(r.code) for r in res)
+
+            embeddings = MODEL.encode([r.code for r in res])
+            for r, emb in zip(res, embeddings):
+                r.embedding = emb
+
+            db.add_many(res)
+
+            iteration += 1
+            checkpoint["step"] = iteration
+
+            if iteration % 64 == 0:
+                pprint(checkpoint)
+                with open(CHECKPOINT_PATH, "w") as f:
+                    json.dump(checkpoint, f, indent=4)
+                rate = round((iteration - step) / max(time.time() - start_time, 1e-9), 2)
+                send_metrics(checkpoint, db.count(), rate)
+    except StopIteration:
+        print("dataset exhausted")
+        with open(CHECKPOINT_PATH, "w") as f:
+            json.dump(checkpoint, f, indent=4)
+        rate = round((iteration - step) / max(time.time() - start_time, 1e-9), 2)
+        send_metrics(checkpoint, db.count(), rate)
+
 
