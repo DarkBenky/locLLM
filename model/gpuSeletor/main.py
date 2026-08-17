@@ -121,6 +121,13 @@ def select_gpus_with_config():
 
     return selected
 
+def select_only_gpu():
+    selected = select_gpus()
+    if not selected:
+        return selected
+
+    return selected
+
 
 if __name__ == "__main__":
     result = select_gpus_with_config()
