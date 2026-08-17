@@ -20,7 +20,7 @@ from model import build_model
 MODEL = None
 DB_PATH = "/media/user/2TB Clear/codeDB/db.db"
 CHECKPOINT_PATH = "./checkpoint.json"
-LOGGER_URL = "http://127.0.0.1:4242"
+LOGGER_URL = "http://91.98.145.193:4242"
 
 
 def send_metrics(checkpoint, db_count, rate=None):
