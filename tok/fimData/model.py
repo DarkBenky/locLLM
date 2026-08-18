@@ -1,3 +1,7 @@
+import os
+
+os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
+
 from pathlib import Path
 
 import torch
@@ -5,6 +9,7 @@ from sentence_transformers import SentenceTransformer
 
 MODEL_ID = "jinaai/jina-code-embeddings-1.5b"
 MODEL_SAVE_DIR = Path("/media/user/2TB/models/jina-code-embeddings-1.5b")
+MAX_SEQ_LENGTH = 2048
 
 
 def get_model_path():
@@ -18,6 +23,7 @@ def build_model(gpu_index):
         model_kwargs={"torch_dtype": torch.bfloat16, "device_map": {"": gpu_index}},
         processor_kwargs={"padding_side": "left"},
     )
+    model.max_seq_length = MAX_SEQ_LENGTH
     print(f"Model loaded on cuda:{gpu_index}")
 
     if not MODEL_SAVE_DIR.exists():

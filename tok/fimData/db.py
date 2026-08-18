@@ -45,6 +45,23 @@ class CodeDB:
                 added += 1
         return added
 
+    def add_batch(self, items):
+        added = 0
+        for code, lang, _hash, embedding in items:
+            cur = self.conn.execute(
+                "INSERT OR IGNORE INTO items (hash, code, lang) VALUES (?,?,?)",
+                (_hash, code, lang),
+            )
+            if not cur.rowcount:
+                continue
+            self.conn.execute(
+                "INSERT INTO vec_items (rowid, embedding) VALUES (?,?)",
+                (cur.lastrowid, self._pack(embedding)),
+            )
+            added += 1
+        self.conn.commit()
+        return added
+
     def search(self, embedding, k=10, lang=None):
         rows = self.conn.execute(
             "SELECT rowid, distance FROM vec_items WHERE embedding MATCH ? AND k=?",

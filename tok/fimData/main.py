@@ -20,6 +20,8 @@ MODEL = None
 DB_PATH = "/media/user/2TB Clear/codeDB/db.db"
 CHECKPOINT_PATH = "./checkpoint.json"
 LOGGER_URL = "http://91.98.145.193:4242"
+BATCH_SIZE = 64
+ENCODE_BATCH_SIZE = 4
 
 
 def send_metrics(checkpoint, db_count, rate=None):
@@ -93,26 +95,32 @@ if __name__ == "__main__":
             break
 
     iteration = step
+    batch = []
     try:
         while True:
             code = next(codeGen)
             lang = code["lang"]
             checkpoint[lang] = checkpoint.get(lang, 0) + 1
             checkpoint[lang + "_char_count"] = checkpoint.get(lang + "_char_count", 0) + len(code["text"])
-
-            embedding = MODEL.encode(code["text"]).flatten()
-            db.add(code["text"], lang, code["hash"], embedding)
-
+            batch.append(code)
             iteration += 1
             checkpoint["step"] = iteration
 
-            if iteration % 64 == 0:
+            if len(batch) >= BATCH_SIZE:
+                embeddings = MODEL.encode([c["text"] for c in batch], batch_size=ENCODE_BATCH_SIZE)
+                db.add_batch([(c["text"], c["lang"], c["hash"], emb) for c, emb in zip(batch, embeddings)])
+                batch = []
+
+            if iteration % 256 == 0:
                 pprint(checkpoint)
                 with open(CHECKPOINT_PATH, "w") as f:
                     json.dump(checkpoint, f, indent=4)
                 rate = round((iteration - step) / max(time.time() - start_time, 1e-9), 2)
                 send_metrics(checkpoint, db.count(), rate)
     except StopIteration:
+        if batch:
+            embeddings = MODEL.encode([c["text"] for c in batch], batch_size=ENCODE_BATCH_SIZE)
+            db.add_batch([(c["text"], c["lang"], c["hash"], emb) for c, emb in zip(batch, embeddings)])
         print("dataset exhausted")
         with open(CHECKPOINT_PATH, "w") as f:
             json.dump(checkpoint, f, indent=4)
