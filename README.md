@@ -1,5 +1,10 @@
 # Add this datasets
 
+- [ ] Distill the current dataset only for code
+  - [ ] create training script that will be used for fim training
+    - [ ] add special token <context_start> and </context_end>
+    - [ ] inject context to model fim input
+
 - [x] https://huggingface.co/datasets/nickrosh/Evol-Instruct-Code-80k-v1
 - [ ] https://huggingface.co/datasets/rajpurkar/squad/
 - [x] https://huggingface.co/datasets/HuggingFaceH4/ultrachat_200k
