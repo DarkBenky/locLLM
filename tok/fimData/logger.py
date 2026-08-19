@@ -37,6 +37,39 @@ def index():
     dbs = [h.get("db_count", 0) for h in history]
     rates = [h.get("rate") or 0 for h in history]
 
+    temp_series = {}
+    for h in history:
+        seen = set()
+        temps = h.get("gpu_temps")
+        if temps:
+            for g in temps:
+                key = str(g.get("index"))
+                temp_series.setdefault(key, {"label": "GPU %s" % g.get("index"), "data": []})
+                temp_series[key]["data"].append(g.get("temp"))
+                seen.add(key)
+        elif h.get("gpu_temp") is not None:
+            temp_series.setdefault("gpu", {"label": "GPU", "data": []})
+            temp_series["gpu"]["data"].append(h["gpu_temp"])
+            seen.add("gpu")
+        for key, series in temp_series.items():
+            if key not in seen:
+                series["data"].append(None)
+
+    temp_datasets = json.dumps(
+        [
+            {
+                "label": series["label"],
+                "data": series["data"],
+                "borderColor": PALETTE[i % len(PALETTE)],
+                "backgroundColor": PALETTE[i % len(PALETTE)] + "22",
+                "fill": True,
+                "tension": 0.2,
+                "pointRadius": 0,
+            }
+            for i, series in enumerate(temp_series.values())
+        ]
+    )
+
     langs = latest.get("langs") or {}
     char_counts = latest.get("char_counts") or {}
     total_chunks = sum(langs.values())
@@ -54,6 +87,16 @@ def index():
     rate_val = latest.get("rate")
     rate_display = ("%s/s" % fmt(rate_val)) if rate_val else "-"
 
+    temp_cards = ""
+    gpu_temps = latest.get("gpu_temps")
+    if gpu_temps:
+        for g in gpu_temps:
+            temp_cards += '<div class="card"><div class="label">GPU %s Temp</div><div class="value">%s°C</div></div>' % (g.get("index"), g.get("temp"))
+    elif latest.get("gpu_temp") is not None:
+        temp_cards += '<div class="card"><div class="label">GPU Temp</div><div class="value">%s°C</div></div>' % latest.get("gpu_temp")
+    else:
+        temp_cards += '<div class="card"><div class="label">GPU Temp</div><div class="value">-</div></div>'
+
     cards = "".join(
         '<div class="card"><div class="label">%s</div><div class="value">%s</div></div>'
         % (label, value)
@@ -66,7 +109,7 @@ def index():
             ("Languages", str(len(langs))),
             ("Last Update", latest.get("time", "-")),
         ]
-    )
+    ) + temp_cards
 
     rows = "".join(
         "<tr><td>%s</td><td class='num'>%s</td><td class='num'>%s</td><td class='num'>%s</td><td class='num'>%s</td></tr>"
@@ -80,6 +123,7 @@ def index():
         steps=jdata(steps),
         dbs=jdata(dbs),
         rates=jdata(rates),
+        temp_datasets=temp_datasets,
         lang_labels=jdata(lang_labels),
         lang_values=jdata(lang_values),
         lang_colors=jdata(lang_colors),
@@ -149,6 +193,7 @@ td.num{text-align:right;font-variant-numeric:tabular-nums}
 <div class="grid">
 <div class="chart-wrap"><h2>Progress (chunks &amp; DB entries)</h2><div class="chart-box"><canvas id="chProgress"></canvas></div></div>
 <div class="chart-wrap"><h2>Rate (chunks/s)</h2><div class="chart-box"><canvas id="chRate"></canvas></div></div>
+<div class="chart-wrap"><h2>GPU Temperature (°C)</h2><div class="chart-box"><canvas id="chTemp"></canvas></div></div>
 </div>
 <div class="grid">
 <div class="chart-wrap"><h2>Chunks per language</h2><div class="chart-box"><canvas id="chLang"></canvas></div></div>
@@ -179,6 +224,7 @@ const grid={color:"#21262d"},tick={color:"#8b949e"};
 Chart.defaults.animation = false;
 new Chart(document.getElementById("chProgress"),{type:"line",data:{labels:$times,datasets:[{label:"Files",data:$steps,borderColor:"#58a6ff",backgroundColor:"#58a6ff22",fill:true,tension:0.2,pointRadius:0},{label:"DB entries",data:$dbs,borderColor:"#3fb950",backgroundColor:"#3fb95022",fill:true,tension:0.2,pointRadius:0}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:"#8b949e"}}},scales:{x:{grid:grid,ticks:tick},y:{grid:grid,ticks:tick}}}});
 new Chart(document.getElementById("chRate"),{type:"line",data:{labels:$times,datasets:[{label:"chunks/s",data:$rates,borderColor:"#d29922",backgroundColor:"#d2992222",fill:true,tension:0.2,pointRadius:0}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:"#8b949e"}}},scales:{x:{grid:grid,ticks:tick},y:{grid:grid,ticks:tick}}}});
+new Chart(document.getElementById("chTemp"),{type:"line",data:{labels:$times,datasets:$temp_datasets},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:"#8b949e"}}},scales:{x:{grid:grid,ticks:tick},y:{grid:grid,ticks:tick,suggestedMin:0,suggestedMax:100}}}});
 new Chart(document.getElementById("chLang"),{type:"bar",data:{labels:$lang_labels,datasets:[{data:$lang_values,backgroundColor:"#58a6ff55",borderColor:"#58a6ff",borderWidth:1}]},options:{indexAxis:"y",responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:grid,ticks:tick},y:{grid:{display:false},ticks:{color:"#8b949e",font:{size:11}}}}}});
 new Chart(document.getElementById("chDonut"),{type:"doughnut",data:{labels:$lang_labels,datasets:[{data:$lang_values,backgroundColor:$lang_colors,borderColor:"#161b22",borderWidth:2}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:"#8b949e",font:{size:11}}}}}});
 new Chart(document.getElementById("chChars"),{type:"bar",data:{labels:$char_labels,datasets:[{data:$char_values,backgroundColor:"#3fb95055",borderColor:"#3fb950",borderWidth:1}]},options:{indexAxis:"y",responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:grid,ticks:{color:"#8b949e",callback:v=>v>=1e9?(v/1e9).toFixed(1)+"B":v>=1e6?(v/1e6).toFixed(1)+"M":v>=1e3?(v/1e3).toFixed(1)+"K":v}},y:{grid:{display:false},ticks:{color:"#8b949e",font:{size:11}}}}}});

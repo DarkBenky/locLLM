@@ -1,6 +1,7 @@
 
 import argparse
 import json
+import subprocess
 import sys
 import time
 import urllib.request
@@ -24,12 +25,33 @@ BATCH_SIZE = 64
 ENCODE_BATCH_SIZE = 4
 
 
-def send_metrics(checkpoint, db_count, rate=None):
+def get_gpu_temps():
+    try:
+        out = subprocess.check_output(
+            [
+                "nvidia-smi",
+                "--query-gpu=index,name,temperature.gpu",
+                "--format=csv,noheader,nounits",
+            ],
+            text=True,
+            timeout=5,
+        ).strip()
+        temps = []
+        for line in out.splitlines():
+            parts = line.split(", ")
+            temps.append({"index": int(parts[0]), "name": parts[1], "temp": int(parts[2])})
+        return temps
+    except Exception:
+        return []
+
+
+def send_metrics(checkpoint, db_count, rate=None, gpu_temps=None):
     payload = {
         "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "step": checkpoint.get("step", 0),
         "db_count": db_count,
         "rate": rate,
+        "gpu_temps": gpu_temps,
         "langs": {k: v for k, v in checkpoint.items() if k != "step" and not k.endswith("_char_count")},
         "char_counts": {k: v for k, v in checkpoint.items() if k.endswith("_char_count")},
     }
@@ -71,10 +93,10 @@ def build():
     print(f"Embedding shape: {embedding.shape} | dtype: {embedding.dtype}")
     print("Test OK")
 
-    return model
+    return model, gpu_index
 
 if __name__ == "__main__":
-    MODEL = build()
+    MODEL, gpu_index = build()
 
     if not Path(CHECKPOINT_PATH).exists():
         with open(CHECKPOINT_PATH, "w") as f:
@@ -85,7 +107,7 @@ if __name__ == "__main__":
 
     db = CodeDB(DB_PATH)
     start_time = time.time()
-    send_metrics(checkpoint, db.count())
+    send_metrics(checkpoint, db.count(), gpu_temps=get_gpu_temps())
 
     codeGen = stack_v3_fim_gen()
     for _ in range(step):
@@ -116,7 +138,7 @@ if __name__ == "__main__":
                 with open(CHECKPOINT_PATH, "w") as f:
                     json.dump(checkpoint, f, indent=4)
                 rate = round((iteration - step) / max(time.time() - start_time, 1e-9), 2)
-                send_metrics(checkpoint, db.count(), rate)
+                send_metrics(checkpoint, db.count(), rate, get_gpu_temps())
     except StopIteration:
         if batch:
             embeddings = MODEL.encode([c["text"] for c in batch], batch_size=ENCODE_BATCH_SIZE)
@@ -125,6 +147,6 @@ if __name__ == "__main__":
         with open(CHECKPOINT_PATH, "w") as f:
             json.dump(checkpoint, f, indent=4)
         rate = round((iteration - step) / max(time.time() - start_time, 1e-9), 2)
-        send_metrics(checkpoint, db.count(), rate)
+        send_metrics(checkpoint, db.count(), rate, get_gpu_temps())
 
 
