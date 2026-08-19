@@ -30,6 +30,13 @@ def jdata(x):
     return json.dumps(x)
 
 
+def gpu_label(g):
+    name = str(g.get("name") or "")
+    if name.startswith("NVIDIA GeForce "):
+        name = name[len("NVIDIA GeForce "):]
+    return name or ("GPU %s" % g.get("index"))
+
+
 @app.route("/", methods=["GET"])
 def index():
     times = [h.get("time", "") for h in history]
@@ -44,7 +51,7 @@ def index():
         if temps:
             for g in temps:
                 key = str(g.get("index"))
-                temp_series.setdefault(key, {"label": "GPU %s" % g.get("index"), "data": []})
+                temp_series.setdefault(key, {"label": gpu_label(g), "data": []})
                 temp_series[key]["data"].append(g.get("temp"))
                 seen.add(key)
         elif h.get("gpu_temp") is not None:
@@ -91,7 +98,7 @@ def index():
     gpu_temps = latest.get("gpu_temps")
     if gpu_temps:
         for g in gpu_temps:
-            temp_cards += '<div class="card"><div class="label">GPU %s Temp</div><div class="value">%s°C</div></div>' % (g.get("index"), g.get("temp"))
+            temp_cards += '<div class="card"><div class="label">%s Temp</div><div class="value">%s°C</div></div>' % (gpu_label(g), g.get("temp"))
     elif latest.get("gpu_temp") is not None:
         temp_cards += '<div class="card"><div class="label">GPU Temp</div><div class="value">%s°C</div></div>' % latest.get("gpu_temp")
     else:
