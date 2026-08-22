@@ -59,6 +59,7 @@ def stack_v3_fim_gen(supported_langs=None):
                     "text": r.code,
                     "lang": r.lang,
                     "category": sample["category"],
+                    "raw_text": sample["text"],
                     "hash": r._hash,
                     "embedding": None,
                 }

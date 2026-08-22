@@ -24,6 +24,9 @@ LOGGER_URL = "http://91.98.145.193:4242"
 BATCH_SIZE = 64
 ENCODE_BATCH_SIZE = 4
 
+SEND_DATA_TO_DATASET = True
+DATASET_URL = "http://localhost:8823/api/receive-data"
+
 
 def get_gpu_temps():
     try:
@@ -65,6 +68,22 @@ def send_metrics(checkpoint, db_count, rate=None, gpu_temps=None):
         urllib.request.urlopen(req, timeout=5)
     except Exception:
         pass
+
+
+def send_to_dataset(text, category):
+    payload = json.dumps({"text": text, "category": category}).encode()
+    req = urllib.request.Request(
+        DATASET_URL,
+        data=payload,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            return json.loads(resp.read().decode())
+    except Exception as e:
+        print(f"send_to_dataset failed: {e}")
+        return None
 
 def build():
     parser = argparse.ArgumentParser(description="FIM data embedding with GPU selection")
@@ -121,6 +140,8 @@ if __name__ == "__main__":
     try:
         while True:
             code = next(codeGen)
+            if SEND_DATA_TO_DATASET:
+                send_to_dataset(code["raw_text"], code["category"])
             lang = code["lang"]
             checkpoint[lang] = checkpoint.get(lang, 0) + 1
             checkpoint[lang + "_char_count"] = checkpoint.get(lang + "_char_count", 0) + len(code["text"])
