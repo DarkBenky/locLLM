@@ -38,6 +38,7 @@ func init() {
 
 	var err error
 	db, err = libs.Open("db/tokenize.db", "db/tokenize.bin")
+	// db, err = libs.Open("/media/user/2TB Clear/codeDBTok/tokenize.db", "/media/user/2TB Clear/codeDBTok/tokenize.bin")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -193,7 +194,9 @@ func main() {
 	e.POST("/api/reset-cursor", handleResetCursor)
 	e.GET("/api/stats", handleStats)
 	e.GET("/api/stats/gui", handleStatsGUI)
+
 	if err := e.Start(":8823"); err != nil {
+	// if err := e.Start(":8824"); err != nil {
 		log.Fatal(err)
 	}
 }
