@@ -71,7 +71,8 @@ def run_checkpoint_sample(step: int, model, sp, block_size: int, device: str) ->
         with torch.no_grad():
             prompt = torch.tensor([prompt_ids], dtype=torch.long, device=device)
             base = sp.get_piece_size()
-            stop_tokens = {base + 3, base + chatml.IM_END_OFF}
+            ctx = chatml.context_ids(base)
+            stop_tokens = {base + 3, base + chatml.IM_END_OFF, ctx["end"]}
             gen = model.generate(prompt, max_new_tokens=SAMPLE_GEN_TOKENS,
                                  temperature=SAMPLE_TEMP, stop_tokens=stop_tokens)
         model.train()
@@ -80,7 +81,8 @@ def run_checkpoint_sample(step: int, model, sp, block_size: int, device: str) ->
         if gen_ids:
             gen_text = chatml.safe_decode(
                 gen_ids, sp, chatml.reserved_ids(base),
-                extra={base: "", base + 1: "", base + 2: "", base + 3: ""})
+                extra={base: "", base + 1: "", base + 2: "", base + 3: "",
+                       ctx["start"]: "<context_start>", ctx["end"]: "</context_end>"})
         else:
             gen_text = "<|im_end|>"
         block = _fmt_checkpoint_sample(step, prompt_text, gen_text)

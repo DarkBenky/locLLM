@@ -27,3 +27,7 @@
 - [X] optimize training (tokens/sec)
 - [X] threading for dataset uploading (dataSets.py)
   - [X] pre dataset checkpoint
+
+- [ ] save the indexes to disk so it can be loaded and with flag --reload it will reload the indexes
+  - [ ] make this as service always running and pc and add to github copilot some kind of global instruction to use it
+    - [ ] also add this to llmOpt so model can use it to there

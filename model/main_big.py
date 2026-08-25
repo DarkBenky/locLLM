@@ -25,12 +25,17 @@ import requests
 import sentencepiece as spm
 import torch.nn.functional as F
 import wandb
+import questionary
+from questionary import Style
 
 from model import Transformer
 from checkpoint_sample import record_raw_tokens, run_checkpoint_sample
 import chatml
 
 API = "http://91.98.145.193:8823"
+FIM_API = "http://localhost:8823"
+FIM_SEARCH_API = "http://localhost:8234/search"
+CONTEXT_MAX_TOKENS = 512
 
 TOKENIZER_MODEL_PATH = "../tok/tokenize/tokenizer_models/tokenizer.model"
 
@@ -80,9 +85,11 @@ USE_SCALER = False
 
 sp = spm.SentencePieceProcessor(model_file=TOKENIZER_MODEL_PATH)
 BASE_VOCAB = sp.get_piece_size()
-VOCAB_SIZE = BASE_VOCAB + chatml.EXTRA_FIM + chatml.EXTRA_CHATML
+VOCAB_SIZE = BASE_VOCAB + chatml.EXTRA_FIM + chatml.EXTRA_CHATML + chatml.EXTRA_CONTEXT
 
 FIM_PRE, FIM_SUF, FIM_MID, FIM_END = BASE_VOCAB, BASE_VOCAB + 1, BASE_VOCAB + 2, BASE_VOCAB + 3
+CONTEXT_IDS = chatml.context_ids(BASE_VOCAB)
+CONTEXT_START, CONTEXT_END = CONTEXT_IDS["start"], CONTEXT_IDS["end"]
 
 _CHATML = chatml.ChatMLDetector(sp)
 CHATML_IDS = chatml.reserved_ids(BASE_VOCAB)
@@ -119,6 +126,29 @@ def _select_gpu_interactive():
         if os.path.exists(tmp_path):
             os.remove(tmp_path)
     return result if isinstance(result, list) else []
+
+
+FIM_MODE = False
+
+def _select_fim_mode_enable():
+    global FIM_MODE
+    custom_style = Style([
+        ("qmark", "fg:#00d7ff bold"),
+        ("question", "bold"),
+        ("pointer", "fg:#00d7ff bold"),
+        ("highlighted", "fg:#00d7ff bold"),
+        ("selected", "fg:#00d7af"),
+    ])
+    choice = questionary.select(
+        "Enable FIM mode",
+        choices=[
+            questionary.Choice(title="Yes", value=True),
+            questionary.Choice(title="No", value=False),
+        ],
+        default=False,
+        style=custom_style,
+    ).ask()
+    FIM_MODE = bool(choice)
 
 
 def _step_from_name(f):
@@ -251,12 +281,12 @@ def _get_session() -> requests.Session:
     return _session
 
 
-def _request_with_retry(url: str, **kwargs) -> requests.Response:
+def _request_with_retry(url: str, method: str = "get", **kwargs) -> requests.Response:
     kwargs.setdefault("timeout", REQUEST_TIMEOUT)
     last_exc = None
     for attempt in range(MAX_REQUEST_RETRIES):
         try:
-            return _get_session().get(url, **kwargs)
+            return getattr(_get_session(), method)(url, **kwargs)
         except requests.exceptions.Timeout:
             last_exc = f"timeout after {kwargs['timeout']}s"
         except requests.exceptions.ConnectionError as e:
@@ -268,6 +298,48 @@ def _request_with_retry(url: str, **kwargs) -> requests.Response:
             print(f"  request failed ({last_exc}), retrying in {delay}s (attempt {attempt + 2}/{MAX_REQUEST_RETRIES})...")
             time.sleep(delay)
     raise RuntimeError(f"request failed after {MAX_REQUEST_RETRIES} retries: {last_exc}")
+
+
+RAG_BATCH_MAX = 8
+RAG_QUERY_MAX_TOKENS = 1536
+RAG_QUERY_MODE = "prefix_suffix"
+RAG_CACHE_MAX = 8192
+_rag_cache = {}
+
+
+def _search_texts(texts: list) -> list:
+    try:
+        res = _get_session().post(
+            FIM_SEARCH_API, json={"texts": texts, "top_k": 1}, timeout=10)
+        data = res.json()
+        return [d["results"][0]["code"] if d.get("results") else None for d in data]
+    except Exception as e:
+        print(f"  WARNING: RAG search failed: {e}")
+        return [None] * len(texts)
+
+
+def search_rag_batch(queries: list) -> list:
+    if len(_rag_cache) > RAG_CACHE_MAX:
+        _rag_cache.clear()
+    out = [None] * len(queries)
+    misses = []
+    for i, q in enumerate(queries):
+        if q in _rag_cache:
+            out[i] = _rag_cache[q]
+        else:
+            misses.append(i)
+    for j in range(0, len(misses), RAG_BATCH_MAX):
+        chunk = misses[j:j + RAG_BATCH_MAX]
+        codes = _search_texts([queries[i] for i in chunk])
+        for i, code in zip(chunk, codes):
+            if code is not None:
+                _rag_cache[queries[i]] = code
+            out[i] = code
+    return out
+
+
+def search_rag(query_text: str) -> str | None:
+    return search_rag_batch([query_text])[0]
 
 
 def get_next_samples(count: int) -> list[tuple[int, list[int]]]:
@@ -368,11 +440,18 @@ def _fim_splits(L: int, n: int):
     return splits
 
 
-def _fim_variant(seq, pre_end: int, mid_end: int):
+def _fim_variant(seq, pre_end: int, mid_end: int, context_ids=None):
     prefix = seq[:pre_end]
     middle = seq[pre_end:mid_end]
     suffix = seq[mid_end:]
-    fim_seq = torch.cat([
+    parts = []
+    if context_ids is not None:
+        parts.extend([
+            torch.tensor([CONTEXT_START], dtype=torch.long),
+            torch.tensor(context_ids, dtype=torch.long),
+            torch.tensor([CONTEXT_END], dtype=torch.long),
+        ])
+    parts.extend([
         torch.tensor([FIM_PRE], dtype=torch.long),
         prefix,
         torch.tensor([FIM_SUF], dtype=torch.long),
@@ -381,22 +460,67 @@ def _fim_variant(seq, pre_end: int, mid_end: int):
         middle,
         torch.tensor([FIM_END], dtype=torch.long),
     ])
+    fim_seq = torch.cat(parts)
     n = len(fim_seq) - 1
     mt = torch.zeros(n, dtype=torch.bool)
-    mid_pos = len(prefix) + len(suffix) + 2
+    ctx_off = 0
+    if context_ids is not None:
+        ctx_off = len(context_ids) + 2
+    mid_pos = ctx_off + len(prefix) + len(suffix) + 2
     if n > mid_pos:
         end = min(n - mid_pos, len(fim_seq) - mid_pos - 1)
         mt[mid_pos:mid_pos + end] = True
     return fim_seq, mt
 
 
-def _process_sample(tokens: list, cat_id: int, block_size: int):
+def _fim_query(tokens: list, pre_end: int, mid_end: int):
+    if RAG_QUERY_MODE == "prefix":
+        query = sp.decode(tokens[:pre_end])
+    elif RAG_QUERY_MODE == "suffix":
+        query = sp.decode(tokens[mid_end:])
+    else:
+        query = sp.decode(tokens[:pre_end]) + "\n" + sp.decode(tokens[mid_end:])
+    query = query.strip()
+    if not query:
+        return None
+    qids = sp.encode(query, out_type=int)
+    if len(qids) > RAG_QUERY_MAX_TOKENS:
+        qids = qids[:RAG_QUERY_MAX_TOKENS]
+        query = sp.decode(qids)
+    return query
+
+
+def _make_context(tokens: list, code: str, block_size: int):
+    if not code:
+        return None
+    ctx = sp.encode(code, out_type=int)
+    if len(ctx) < 8:
+        return None
+    room = max(0, block_size - len(tokens) - 6)
+    if room < 8:
+        return None
+    ctx = ctx[:min(CONTEXT_MAX_TOKENS, room)]
+    if len(ctx) < 8:
+        return None
+    return ctx
+
+
+def _fim_context(tokens: list, pre_end: int, mid_end: int, block_size: int):
+    query = _fim_query(tokens, pre_end, mid_end)
+    if not query:
+        return None
+    code = search_rag(query)
+    return _make_context(tokens, code, block_size)
+
+
+def _plan_fim(tokens: list, cat_id: int, block_size: int):
     global _sample_pool
     is_code = cat_id in CODE_CATEGORY_IDS
     do_fim = is_code and random.random() < FIM_RATIO and len(tokens) >= MIN_SAMPLE_TOKENS
-
     if do_fim:
         fim_cap = block_size - 3
+        if FIM_MODE:
+            fim_cap = block_size - CONTEXT_MAX_TOKENS - 6
         if len(tokens) > fim_cap:
             tail = tokens[fim_cap:]
             if len(tail) >= 16:
@@ -405,15 +529,20 @@ def _process_sample(tokens: list, cat_id: int, block_size: int):
                 else:
                     print(f"WARNING: pool full ({MAX_CACHE_SIZE}), discarding tail of sample")
             tokens = tokens[:fim_cap]
-        seq = torch.tensor(tokens, dtype=torch.long)
         L = len(tokens)
         splits = _fim_splits(L, FIM_VARIANTS)
         if not splits:
             splits = _fim_splits(L, 1)
         if not splits:
             do_fim = False
+    return tokens, splits if do_fim else []
 
-    if not do_fim:
+
+def _process_sample(tokens: list, cat_id: int, block_size: int, splits=None, context_map=None):
+    if splits is None:
+        tokens, splits = _plan_fim(tokens, cat_id, block_size)
+        context_map = None
+    if not splits:
         headers, ends = _CHATML.analyze(tokens)
         if headers:
             toks = chatml.replace_markers(tokens, headers, ends, CHATML_IDS)
@@ -423,9 +552,16 @@ def _process_sample(tokens: list, cat_id: int, block_size: int):
             mt = None
         return [(torch.tensor(toks, dtype=torch.long), mt, False)]
 
+    seq = torch.tensor(tokens, dtype=torch.long)
     variants = []
     for s in splits:
-        vseq, vmt = _fim_variant(seq, s[0], s[1])
+        context = None
+        if FIM_MODE:
+            if context_map is not None:
+                context = context_map.get(s)
+            else:
+                context = _fim_context(tokens, s[0], s[1], block_size)
+        vseq, vmt = _fim_variant(seq, s[0], s[1], context)
         variants.append((vseq, vmt, True))
     return variants
 
@@ -485,9 +621,26 @@ def _build_batch_from_pool(batch_size: int, block_size: int):
 
     processed = []
     cats = []
+    plans = []
+    context_maps = [{} for _ in chosen]
     for cat, tokens in chosen:
         record_raw_tokens(tokens)
-        outs = _process_sample(tokens, cat, block_size)
+        pt, splits = _plan_fim(tokens, cat, block_size)
+        plans.append((pt, cat, splits))
+    pending = []
+    queried = []
+    if FIM_MODE:
+        for i, (pt, cat, splits) in enumerate(plans):
+            for s in splits:
+                q = _fim_query(pt, s[0], s[1])
+                if q:
+                    pending.append((i, s))
+                    queried.append(q)
+        codes = search_rag_batch(queried)
+        for (i, s), code in zip(pending, codes):
+            context_maps[i][s] = _make_context(plans[i][0], code, block_size)
+    for i, (pt, cat, splits) in enumerate(plans):
+        outs = _process_sample(pt, cat, block_size, splits=splits, context_map=context_maps[i])
         processed.extend(outs)
         cats.extend([cat] * len(outs))
     x, y, fim_flags = _assemble_batch(processed, block_size)
@@ -537,6 +690,11 @@ def get_lr(step: int, step0: int = 0) -> float:
 
 if __name__ == "__main__":
     selected = _select_gpu_interactive()
+    _select_fim_mode_enable()
+    if FIM_MODE:
+        API = FIM_API
+        CKPT_PREFIX = "step_big_fim_"
+    print(f"FIM mode: {FIM_MODE} | data API: {API} | ckpt prefix: {CKPT_PREFIX}")
     if len(selected) > 1:
         print(f"NOTE: multi-GPU training is not supported yet — using only the "
               f"first selected GPU ({selected[0]['name']})")
@@ -617,8 +775,13 @@ if __name__ == "__main__":
     os.makedirs(CKPT_DIR, exist_ok=True)
     if RESUME_FROM_CHECKPOINT:
         all_pt = [f for f in os.listdir(CKPT_DIR) if f.endswith(".pt")]
-        big_ckpts = sorted([f for f in all_pt if f.startswith(CKPT_PREFIX)], key=_step_from_name)
-        normal_ckpts = sorted([f for f in all_pt if f.startswith("step_") and not f.startswith(CKPT_PREFIX)], key=_step_from_name)
+        fim_big = [f for f in all_pt if f.startswith("step_big_fim_")]
+        base_big = [f for f in all_pt if f.startswith("step_big_") and not f.startswith("step_big_fim_")]
+        big_ckpts = fim_big if FIM_MODE else base_big
+        if not big_ckpts:
+            big_ckpts = base_big
+        big_ckpts = sorted(big_ckpts, key=_step_from_name)
+        normal_ckpts = sorted([f for f in all_pt if f.startswith("step_") and not f.startswith("step_big_")], key=_step_from_name)
         if big_ckpts:
             latest = os.path.join(CKPT_DIR, big_ckpts[-1])
             print(f"Loading big checkpoint: {latest}", flush=True)
@@ -675,7 +838,7 @@ if __name__ == "__main__":
         print(f"Wake-up phase: old blocks frozen for {WAKEUP_STEPS} steps")
 
     wandb.login()
-    wandb.init(project="locLMM", config={
+    wandb.init(project="locLMM-FIM" if FIM_MODE else "locLMM", config={
         "vocab_size": VOCAB_SIZE, "block_size": BLOCK_SIZE, "batch_size": BATCH_SIZE,
         "grad_accum": GRAD_ACCUM, "effective_batch_size": BATCH_SIZE * GRAD_ACCUM,
         "dim": DIM, "n_layers": N_LAYERS, "n_heads": N_HEADS, "upscaled_from": OLD_N_LAYERS,
@@ -929,7 +1092,7 @@ if __name__ == "__main__":
                     os.remove(os.path.join(CKPT_DIR, old))
                     print(f"removed old checkpoint: {old}")
                 for f in os.listdir(CKPT_DIR):
-                    if f.endswith(".pt") and not f.startswith(CKPT_PREFIX):
+                    if f.endswith(".pt") and f.startswith("step_") and not f.startswith("step_big_"):
                         os.remove(os.path.join(CKPT_DIR, f))
                         print(f"removed superseded normal checkpoint: {f}")
 

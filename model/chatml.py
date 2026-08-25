@@ -6,6 +6,12 @@ IM_START_OFF, IM_END_OFF = 4, 5
 ROLE_OFFSETS = ("system", "user", "assistant", "tool")
 EXTRA_FIM = 4
 EXTRA_CHATML = 6
+EXTRA_CONTEXT = 2
+
+
+def context_ids(base):
+    off = base + EXTRA_FIM + EXTRA_CHATML
+    return {"start": off, "end": off + 1}
 
 CHATML_MASK_PROB = 0.8
 

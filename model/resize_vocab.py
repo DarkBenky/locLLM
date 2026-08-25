@@ -48,7 +48,7 @@ def main():
     args = ap.parse_args()
 
     sp = spm.SentencePieceProcessor(model_file=TOKENIZER_MODEL_PATH)
-    new_vocab = sp.get_piece_size() + chatml.EXTRA_FIM + chatml.EXTRA_CHATML
+    new_vocab = sp.get_piece_size() + chatml.EXTRA_FIM + chatml.EXTRA_CHATML + chatml.EXTRA_CONTEXT
 
     ckpt = torch.load(args.src, map_location="cpu", mmap=True)
     old_sd = ckpt["model"]
