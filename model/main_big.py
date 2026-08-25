@@ -66,7 +66,7 @@ FIM_VARIANTS = 1  # FIM samples generated per code sample
 LOSS_CHUNK = 1024  # sequence-chunk size for head+loss (bounds logits memory)
 
 LOG_EVERY = 10
-CKPT_EVERY = 250
+CKPT_EVERY = 125
 EVAL_EVERY = 250
 EVAL_SAMPLES = 8
 CKPT_DIR = "./checkpoints"

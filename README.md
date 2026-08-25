@@ -1,5 +1,7 @@
 # Add this datasets
 
+- [ ] Fim mode
+
 - [ ] Distill the current dataset only for code
   - [ ] create training script that will be used for fim training
     - [ ] add special token <context_start> and </context_end>

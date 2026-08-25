@@ -34,3 +34,17 @@ def build_model(gpu_index):
         print(f"Model already saved at {MODEL_SAVE_DIR}")
 
     return model
+
+
+def embed_texts(model, texts, batch_size=32, normalize_embeddings=False):
+    if isinstance(texts, str):
+        texts = [texts]
+
+    embeddings = model.encode(
+        texts,
+        batch_size=batch_size,
+        normalize_embeddings=normalize_embeddings,
+        convert_to_numpy=True,
+        show_progress_bar=False,
+    )
+    return embeddings

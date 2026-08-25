@@ -7,7 +7,7 @@ import sqlite_vec
 class CodeDB:
     def __init__(self, path, dim=1536):
         self.dim = dim
-        self.conn = sqlite3.connect(path)
+        self.conn = sqlite3.connect(path, check_same_thread=False)
         self.conn.enable_load_extension(True)
         sqlite_vec.load(self.conn)
         self.conn.enable_load_extension(False)
@@ -84,6 +84,14 @@ class CodeDB:
         return self.conn.execute(
             "SELECT 1 FROM items WHERE hash=?", (_hash,)
         ).fetchone() is not None
+
+    def get_item(self, rowid):
+        r = self.conn.execute(
+            "SELECT hash, code, lang FROM items WHERE rowid=?", (rowid,)
+        ).fetchone()
+        if r is None:
+            return None
+        return {"hash": r[0], "code": r[1], "lang": r[2]}
 
     def count(self):
         return self.conn.execute("SELECT COUNT(*) FROM items").fetchone()[0]

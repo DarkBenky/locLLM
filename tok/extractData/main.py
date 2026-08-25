@@ -19,6 +19,31 @@ TOKENIZER_MODEL_PATH = os.path.join(
     "..", "tokenize", "tokenizer_models", "tokenizer.model",
 )
 
+REQUEST_TIMEOUT = 30
+MAX_RETRIES = 5
+
+
+def _request(method, url, **kwargs):
+    kwargs.setdefault("timeout", REQUEST_TIMEOUT)
+    last_exc = None
+    for attempt in range(MAX_RETRIES):
+        try:
+            res = requests.request(method, url, **kwargs)
+            if res.status_code >= 500:
+                raise requests.HTTPError(f"{res.status_code} Server Error: {url}", response=res)
+            res.raise_for_status()
+            return res
+        except requests.RequestException as e:
+            if isinstance(e, requests.HTTPError) and e.response is not None and e.response.status_code < 500:
+                raise
+            last_exc = e
+            if attempt < MAX_RETRIES - 1:
+                delay = min(30, 2 ** attempt)
+                print(f"{method} {url} failed ({e}), retry in {delay}s ({attempt + 1}/{MAX_RETRIES})")
+                time.sleep(delay)
+    raise last_exc
+
+
 def getSupportedLangs():
     langsDict = {}
     with open(LANGS_PATH, "r") as f:
@@ -28,7 +53,7 @@ def getSupportedLangs():
     return langsDict
 
 def getCategories():
-    res = requests.get(FROM_API+"get-category-index")
+    res = _request("GET", FROM_API + "get-category-index")
     return res.json()
 
 LANG_ALIASES = {
@@ -40,6 +65,10 @@ LANG_ALIASES = {
     "ts": "typescript",
     "golang": "go",
     "py": "python",
+}
+
+EXTRA_CATEGORIES = {
+    "star_coder",
 }
 
 _supported_map_cache = None
@@ -58,6 +87,8 @@ def _resolve_language(category: str) -> str | None:
     key = category.strip().lower()
     if key in LANG_ALIASES:
         key = LANG_ALIASES[key]
+    if key in EXTRA_CATEGORIES:
+        return key
     return _supported_map().get(key)
 
 
@@ -94,8 +125,7 @@ def getSamples(count: int, verbose: bool = False):
     cat_index = getCategories()
     id_to_name = {cid: name for name, cid in cat_index.items()}
 
-    res = requests.get(FROM_API + "get-next-samples-random", params={"sample_count": count})
-    res.raise_for_status()
+    res = _request("GET", FROM_API + "get-next-samples-random", params={"sample_count": count})
     raw_samples = res.json().get("samples", [])
 
     samples = []
@@ -128,10 +158,11 @@ def submitData(data):
             "category": sample["category"],
             "text": sample["decoded_text"],
         }
-        res = requests.post(TO_API, json=request)
-        res.raise_for_status()
-        if res.status_code != 200:
-            print(f"submitData: server returned status {res.status_code}: {res.text}")
+        try:
+            _request("POST", TO_API, json=request)
+            time.sleep(0.1)
+        except requests.RequestException as e:
+            print(f"submitData: sample failed: {e}")
 
 
 if __name__ == "__main__":
@@ -140,7 +171,12 @@ if __name__ == "__main__":
     start_all = time.time()
     while True:
         start = time.time()
-        samples = getSamples(2048, verbose=True)
+        try:
+            samples = getSamples(2048, verbose=True)
+        except Exception as e:
+            print(f"getSamples failed: {e}")
+            time.sleep(10)
+            continue
         batch_tokens = sum(len(s["tokens"]) for s in samples)
         total_token_count += batch_tokens
         total_samples += len(samples)
