@@ -25,8 +25,44 @@ def resolve_lang(name):
     return ALIASES.get(key)
 
 
-def stack_v3_gen(supported_langs=None):
-    ds = load_dataset("HuggingFaceCode/stack-v3-train", split="train", streaming=True, cache_dir=CACHE_DIR)
+_CURRENT_DS = None
+_RESUME_FAILED = False
+
+
+def _open_dataset(resume_state=None):
+    global _CURRENT_DS, _RESUME_FAILED
+    ds = load_dataset(
+        "HuggingFaceCode/stack-v3-train",
+        split="train",
+        streaming=True,
+        cache_dir=CACHE_DIR,
+    )
+    _CURRENT_DS = ds
+    _RESUME_FAILED = False
+    if resume_state is not None:
+        try:
+            ds.load_state_dict(resume_state)
+        except Exception as e:
+            print(f"resume state restore failed ({type(e).__name__}: {e}); using step replay")
+            _RESUME_FAILED = True
+    return ds
+
+
+def get_resume_state():
+    if _CURRENT_DS is None:
+        return None
+    try:
+        return _CURRENT_DS.state_dict()
+    except Exception:
+        return None
+
+
+def resume_failed():
+    return _RESUME_FAILED
+
+
+def stack_v3_gen(supported_langs=None, resume_state=None):
+    ds = _open_dataset(resume_state)
     if isinstance(supported_langs, str):
         supported_langs = {s.strip().lower() for s in supported_langs.split(",")}
     elif supported_langs is not None:
@@ -49,8 +85,8 @@ def stack_v3_gen(supported_langs=None):
             continue
 
 
-def stack_v3_fim_gen(supported_langs=None):
-    for sample in stack_v3_gen(supported_langs):
+def stack_v3_fim_gen(supported_langs=None, resume_state=None):
+    for sample in stack_v3_gen(supported_langs, resume_state):
         try:
             result = parseCodeSample(SampleUnparsed(sample["text"], sample["lang"]))
             results = result if isinstance(result, list) else [result]
@@ -61,6 +97,7 @@ def stack_v3_fim_gen(supported_langs=None):
                     "category": sample["category"],
                     "raw_text": sample["text"],
                     "hash": r._hash,
+                    "norm_hash": r.norm_hash,
                     "embedding": None,
                 }
         except:

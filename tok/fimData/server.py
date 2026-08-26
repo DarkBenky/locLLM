@@ -18,7 +18,7 @@ DB = None
 INDEX = None
 GPU_INDEX = None
 
-DB_PATH = "/media/user/2TB Clear/codeDB/db.db"
+DB_PATH = "/media/user/sda1/codeDB/db.db"
 MAX_BATCH_SIZE = 8
 
 app = fastapi.FastAPI()

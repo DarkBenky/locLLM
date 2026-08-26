@@ -5,7 +5,7 @@ import sqlite_vec
 
 
 class CodeDB:
-    def __init__(self, path, dim=1536):
+    def __init__(self, path, dim=1536, create_index=True):
         self.dim = dim
         self.conn = sqlite3.connect(path, check_same_thread=False)
         self.conn.enable_load_extension(True)
@@ -15,8 +15,16 @@ class CodeDB:
             f"CREATE VIRTUAL TABLE IF NOT EXISTS vec_items USING vec0(embedding float[{dim}])"
         )
         self.conn.execute(
-            "CREATE TABLE IF NOT EXISTS items (hash TEXT PRIMARY KEY, code TEXT, lang TEXT)"
+            "CREATE TABLE IF NOT EXISTS items (hash TEXT PRIMARY KEY, code TEXT, lang TEXT, norm_hash TEXT)"
         )
+        cols = {r[1] for r in self.conn.execute("PRAGMA table_info(items)")}
+        if "norm_hash" not in cols:
+            self.conn.execute("ALTER TABLE items ADD COLUMN norm_hash TEXT")
+        if create_index:
+            self.conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_items_norm_hash ON items(norm_hash)"
+            )
+        self.conn.commit()
 
     def _pack(self, embedding):
         return struct.pack(f"{self.dim}f", *embedding)
@@ -84,6 +92,56 @@ class CodeDB:
         return self.conn.execute(
             "SELECT 1 FROM items WHERE hash=?", (_hash,)
         ).fetchone() is not None
+
+    def exists_norm(self, norm_hash):
+        return self.conn.execute(
+            "SELECT 1 FROM items WHERE norm_hash=? LIMIT 1", (norm_hash,)
+        ).fetchone() is not None
+
+    def add_batch_dedup(self, items):
+        added = 0
+        dup_norm = 0
+        dup_hash = 0
+        dropped = []
+        accepted = []
+        seen = set()
+        for code, lang, _hash, embedding, norm_hash in items:
+            if norm_hash is not None:
+                if norm_hash in seen or self.exists_norm(norm_hash):
+                    dup_norm += 1
+                    dropped.append((lang, "norm"))
+                    continue
+            cur = self.conn.execute(
+                "INSERT OR IGNORE INTO items (hash, code, lang, norm_hash) VALUES (?,?,?,?)",
+                (_hash, code, lang, norm_hash),
+            )
+            if not cur.rowcount:
+                dup_hash += 1
+                dropped.append((lang, "hash"))
+                continue
+            self.conn.execute(
+                "INSERT INTO vec_items (rowid, embedding) VALUES (?,?)",
+                (cur.lastrowid, self._pack(embedding)),
+            )
+            if norm_hash is not None:
+                seen.add(norm_hash)
+            accepted.append((lang, embedding))
+            added += 1
+        self.conn.commit()
+        return {
+            "added": added,
+            "dup_norm": dup_norm,
+            "dup_hash": dup_hash,
+            "dropped": dropped,
+            "accepted": accepted,
+        }
+
+    def iter_all(self):
+        cur = self.conn.execute(
+            "SELECT rowid, hash, code, lang FROM items ORDER BY rowid"
+        )
+        for row in cur:
+            yield row
 
     def get_item(self, rowid):
         r = self.conn.execute(

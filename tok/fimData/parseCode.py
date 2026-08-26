@@ -4,6 +4,8 @@ import re
 from hashlib import sha256
 from tree_sitter_language_pack import get_parser
 
+from dedup import compute_norm_hash
+
 @dataclass
 class ParseResult:
     code: str
@@ -15,6 +17,7 @@ class ParseResult:
         self.code = code
         self.lang = lang
         self._hash = sha256(code.encode()).hexdigest()
+        self.norm_hash = compute_norm_hash(code, lang, TS_LANG_NAMES.get(lang))
         self.embedding = None
 
     def __hash__(self):
