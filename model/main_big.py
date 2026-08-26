@@ -29,7 +29,7 @@ import questionary
 from questionary import Style
 
 from model import Transformer
-from checkpoint_sample import record_raw_tokens, run_checkpoint_sample
+from checkpoint_sample import record_raw_tokens, record_fim_sample, run_checkpoint_sample, run_fim_checkpoint_sample
 import chatml
 
 API = "http://91.98.145.193:8823"
@@ -68,6 +68,7 @@ GRAD_CLIP = 1.0
 CHATML_MASK_PROB = 0.8
 FIM_RATIO = 0.95
 FIM_VARIANTS = 1  # FIM samples generated per code sample
+FIM_MAX_SAMPLE_TOKENS = 0  # 0 = no cap (full 4096 window); e.g. 2048 trades quality for ~1.8x speed
 LOSS_CHUNK = 1024  # sequence-chunk size for head+loss (bounds logits memory)
 
 LOG_EVERY = 10
@@ -393,7 +394,7 @@ MAX_CACHE_SIZE = 1024
 
 FETCH_BULK = 256
 POOL_MIN = 64
-BATCH_QUEUE_MAX = 2
+BATCH_QUEUE_MAX = 4
 
 _sample_pool: list[tuple[int, list[int]]] = []
 _batch_queue = queue.Queue(maxsize=BATCH_QUEUE_MAX)
@@ -521,6 +522,8 @@ def _plan_fim(tokens: list, cat_id: int, block_size: int):
         fim_cap = block_size - 3
         if FIM_MODE:
             fim_cap = block_size - CONTEXT_MAX_TOKENS - 6
+            if FIM_MAX_SAMPLE_TOKENS > 0:
+                fim_cap = min(fim_cap, FIM_MAX_SAMPLE_TOKENS)
         if len(tokens) > fim_cap:
             tail = tokens[fim_cap:]
             if len(tail) >= 16:
@@ -643,6 +646,11 @@ def _build_batch_from_pool(batch_size: int, block_size: int):
         outs = _process_sample(pt, cat, block_size, splits=splits, context_map=context_maps[i])
         processed.extend(outs)
         cats.extend([cat] * len(outs))
+    for seq, mt, fim_flag in reversed(processed):
+        if fim_flag:
+            lst = seq.tolist()
+            record_fim_sample(lst, lst.index(FIM_MID))
+            break
     x, y, fim_flags = _assemble_batch(processed, block_size)
     return x, y, cats, fim_flags
 
@@ -1072,7 +1080,10 @@ if __name__ == "__main__":
             torch.save({"model": model.state_dict(), "optimizer": optimizer.state_dict(),
                         "step": step}, ckpt_path)
             print(f"saved checkpoint: {ckpt_path}")
-            run_checkpoint_sample(step, model, sp, BLOCK_SIZE, DEVICE)
+            if FIM_MODE:
+                run_fim_checkpoint_sample(step, model, sp, BLOCK_SIZE, DEVICE)
+            else:
+                run_checkpoint_sample(step, model, sp, BLOCK_SIZE, DEVICE)
             torch.cuda.empty_cache()
 
             if KEEP_CHECKPOINTS_COUNT == 0 or KEEP_CHECKPOINTS_COUNT == -1:

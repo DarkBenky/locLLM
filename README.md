@@ -1,6 +1,7 @@
 # Add this datasets
 
 - [ ] Fim mode
+  - [x] For example that is logged in terminal we should show sample that will look like training data in FIM mode so <context> + <fim_parts> + model output
 
 - [ ] Distill the current dataset only for code
   - [ ] create training script that will be used for fim training

@@ -13,12 +13,20 @@ SAMPLE_TEMP = 0.8
 TERM_WIDTH = 80
 
 LAST_RAW_TOKENS = None
+LAST_FIM_TOKENS = None
+LAST_FIM_MID = None
 sample_table = wandb.Table(columns=["step", "sample"])
 
 
 def record_raw_tokens(tokens):
     global LAST_RAW_TOKENS
     LAST_RAW_TOKENS = tokens
+
+
+def record_fim_sample(tokens, mid):
+    global LAST_FIM_TOKENS, LAST_FIM_MID
+    LAST_FIM_TOKENS = tokens
+    LAST_FIM_MID = mid
 
 
 def _disp_width(s: str) -> int:
@@ -48,6 +56,74 @@ def _fmt_checkpoint_sample(step: int, prompt_text: str, gen_text: str) -> list[s
     block.extend(_wrap(gen_text))
     block.append("=" * (TERM_WIDTH - 4))
     return block
+
+
+def _fmt_fim_sample(step: int, context_text, prefix_text: str, suffix_text: str,
+                    gen_text: str) -> list[str]:
+    block = [f"===== step {step} | FIM checkpoint sample ====="]
+    block.append("-- context --")
+    block.extend(_wrap(context_text) if context_text else ["(none)"])
+    block.append("-- <fim_prefix> --")
+    block.extend(_wrap(prefix_text))
+    block.append("-- <fim_suffix> --")
+    block.extend(_wrap(suffix_text))
+    block.append("-- <fim_middle> | model output --")
+    block.extend(_wrap(gen_text))
+    block.append("=" * (TERM_WIDTH - 4))
+    return block
+
+
+def run_fim_checkpoint_sample(step: int, model, sp, block_size: int, device: str) -> None:
+    global LAST_FIM_TOKENS, LAST_FIM_MID
+    if not LAST_FIM_TOKENS or LAST_FIM_MID is None:
+        print("  (FIM checkpoint sample skipped: no FIM sample captured)")
+        return
+    try:
+        base = sp.get_piece_size()
+        ctx = chatml.context_ids(base)
+        toks = LAST_FIM_TOKENS
+        mid = LAST_FIM_MID
+        fim_pre, fim_suf, fim_mid, fim_end = base, base + 1, base + 2, base + 3
+        cs = toks.index(ctx["start"]) if ctx["start"] in toks else -1
+        ce = toks.index(ctx["end"]) if ctx["end"] in toks else -1
+        pi = toks.index(fim_pre)
+        si = toks.index(fim_suf)
+        context_text = None
+        if cs >= 0 and ce > cs:
+            context_text = sp.decode(toks[cs + 1:ce])
+        prefix_text = sp.decode(toks[pi + 1:si])
+        if len(prefix_text) > 600:
+            prefix_text = "[...] " + prefix_text[-600:]
+        suffix_text = sp.decode(toks[si + 1:mid])
+        if len(suffix_text) > 600:
+            suffix_text = suffix_text[:600] + " [...]"
+
+        model.eval()
+        with torch.no_grad():
+            prompt_toks = toks[:mid + 1][-(block_size - SAMPLE_GEN_TOKENS):]
+            prompt = torch.tensor([prompt_toks], dtype=torch.long, device=device)
+            stop_tokens = {fim_end, base + chatml.IM_END_OFF, ctx["end"]}
+            gen = model.generate(prompt, max_new_tokens=SAMPLE_GEN_TOKENS,
+                                 temperature=SAMPLE_TEMP, stop_tokens=stop_tokens)
+        model.train()
+
+        gen_ids = gen[0, prompt.shape[1]:].tolist()
+        if gen_ids:
+            gen_text = chatml.safe_decode(
+                gen_ids, sp, chatml.reserved_ids(base),
+                extra={base: "", base + 1: "", base + 2: "", base + 3: "",
+                       ctx["start"]: "<context_start>", ctx["end"]: "</context_end>"})
+        else:
+            gen_text = "<|fim_end|>"
+        block = _fmt_fim_sample(step, context_text, prefix_text, suffix_text, gen_text)
+        for line in block:
+            print(line)
+        print()
+        sample_table.add_data(step, "\n".join(block))
+        wandb.log({"checkpoint_samples": sample_table}, step=step)
+    except Exception as e:
+        print(f"WARNING: FIM checkpoint sample generation failed: {e}")
+        model.train()
 
 
 def run_checkpoint_sample(step: int, model, sp, block_size: int, device: str) -> None:
