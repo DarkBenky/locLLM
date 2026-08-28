@@ -1,6 +1,7 @@
 # Add this datasets
 
 - [ ] Fim mode
+  - [ ] injection language for contex part and fim part maybe use some special tokens like <lanng> python </lang>
   - [x] For example that is logged in terminal we should show sample that will look like training data in FIM mode so <context> + <fim_parts> + model output
 
 - [ ] Distill the current dataset only for code
