@@ -1,5 +1,7 @@
 # Add this datasets
 
+- [ ] KV cache for model infrence
+
 - [ ] Fim mode
   - [ ] injection language for contex part and fim part maybe use some special tokens like <lanng> python </lang>
   - [x] For example that is logged in terminal we should show sample that will look like training data in FIM mode so <context> + <fim_parts> + model output
