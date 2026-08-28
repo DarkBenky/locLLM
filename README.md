@@ -6,19 +6,76 @@
   - [ ] Maybe also some special token for context relevancy would be nice so the context would have
   ```
   <context_start>
-  <lang> python <high_relevancy> <same_lang> </lang>
+  
+  <lang>python</lang>
+  <context_same_lang>true</context_same_lang>
+  <context_relevancy>high</context_relevancy>
+
   context ...
+  
   <context_end>
+  
   <fim_prefix>
+  
   <lang> python </lang>
+  
   code ...
+  
   </fim_prefix_end>
-  <fim_end>
+  
+  <fim_sufix>
+  
   <lang> python </lang>
+
   code ...
-  </fim_end_end>
+  
+  </fim_sufix_end>
+
   <fim_middle>
+  
   generation ...
+
+  </fim_end>
+  ```
+
+  ```
+  <context_start>
+
+  <lang>python</lang>
+  <context_same_lang>true</context_same_lang>
+  <context_relevancy>high</context_relevancy>
+  
+  def load_config(path):
+      with open(path, "r") as file:
+          config = json.load(file)
+      return config
+  
+  <context_end>
+  
+  <fim_prefix>
+  
+  <lang>python</lang>
+  
+  def load_settings(path):
+      with open(path, "r") as file:
+          settings = json.load(file)
+      return
+  
+  </fim_prefix_end>
+  
+  <fim_sufix>
+  
+  <lang>python</lang>
+  
+      settings["debug"] = False
+      return settings
+  
+  </fim_sufix_end>
+  
+  <fim_middle>
+  
+  settings
+  <fim_end>
   ```
   
 
