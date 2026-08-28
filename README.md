@@ -3,6 +3,24 @@
 - [ ] Fim mode
   - [ ] injection language for contex part and fim part maybe use some special tokens like <lanng> python </lang>
   - [x] For example that is logged in terminal we should show sample that will look like training data in FIM mode so <context> + <fim_parts> + model output
+  - [ ] Maybe also some special token for context relevancy would be nice so the context would have
+  ```
+  <context_start>
+  <lang> python <high_relevancy> <same_lang> </lang>
+  context ...
+  <context_end>
+  <fim_prefix>
+  <lang> python </lang>
+  code ...
+  </fim_prefix_end>
+  <fim_end>
+  <lang> python </lang>
+  code ...
+  </fim_end_end>
+  <fim_middle>
+  generation ...
+  ```
+  
 
 - [ ] Distill the current dataset only for code
   - [ ] create training script that will be used for fim training
