@@ -74,8 +74,8 @@ ROPE_BASE = 10000.0  # test e.g. 100000 for longer extrapolation at 8192
 LOSS_CHUNK = 1024  # sequence-chunk size for head+loss (bounds logits memory)
 
 LOG_EVERY = 10
-CKPT_EVERY = 125
-EVAL_EVERY = 250
+CKPT_EVERY = 75
+EVAL_EVERY = 125
 EVAL_FIRST_AFTER = 10  # run one early eval after N steps (fail-fast sanity check)
 EVAL_SAMPLES = 64
 FIM_EVAL_SAMPLES = 32
@@ -102,6 +102,7 @@ LANG_OPEN, LANG_CLOSE = LANG_IDS["open"], LANG_IDS["close"]
 # Worst-case tokens for the three <lang>...</lang> blocks (context + prefix + suffix):
 # 3 blocks x (2 marker tokens + up to 6 tokens for the language name).
 LANG_OVERHEAD = 24
+NEWLINE_IDS = set(sp.encode("\n", out_type=int))
 
 _CHATML = chatml.ChatMLDetector(sp)
 CHATML_IDS = chatml.reserved_ids(BASE_VOCAB)
@@ -378,8 +379,8 @@ def get_category_index() -> tuple[set[int], dict[int, str]]:
     code_names = {
         "python", "javascript", "c++", "java", "c", "go", "typescript",
         "ruby", "rust", "php", "swift", "c#", "kotlin", "scala", "dart",
-        "objective-c", "perl", "lua", "sql", "html", "css", "json",
-        "yaml", "markdown", "xml", "otherlanguage",
+        "objective-c", "perl", "lua", "sql", "html", "css", "yaml", "tsx", "shell", "otherlanguage",
+        # data/doc formats (markdown/json/xml) train as plain LM, not FIM
         # extra raw-code categories emitted by dataSets.py generators
         "golang",     # stack_v3_gen (Go files tagged "Golang")
         "star_coder", # star_coder_gen (bigcode/starcoderdata)
@@ -390,9 +391,9 @@ def get_category_index() -> tuple[set[int], dict[int, str]]:
         "haskell", "ocaml", "f#", "erlang", "elixir", "clojure", "elm",
         "purescript", "rescript", "reason", "racket", "scheme", "common lisp",
         "emacs lisp", "apl", "j", "raku",
-        "assembly", "cuda", "glsl", "hlsl", "opencl", "webassembly",
+        "assembly", "cuda", "glsl", "hlsl", "opencl", "wgsl", "webassembly",
         "verilog", "systemverilog", "vhdl",
-        "fortran", "pascal", "ada", "cobol", "visual basic .net",
+        "fortran", "fortran free form", "pascal", "ada", "cobol", "visual basic .net",
         "solidity", "vyper", "move", "cairo", "noir",
         "q#", "starlark", "ballerina",
     }
@@ -486,17 +487,45 @@ def _fetch_samples_with_retry(count: int) -> list[tuple[int, list[int]]]:
     )
 
 
-def _fim_splits(L: int, n: int):
-    cut = random.randint(L // 4, 7 * L // 10)
+def _sample_mid_len(mid_max: int) -> int:
+    """Middle-span mixture biased toward line-level completions (real autocomplete):
+    ~50% 1-few lines, ~30% medium (function bodies), ~20% up to the window budget."""
+    if mid_max <= 1:
+        return 1
+    r = random.random()
+    if r < 0.5:
+        return min(mid_max, random.choice((4, 8, 12, 16, 24, 32, 48, 64, 96, 128)))
+    if r < 0.8:
+        return random.randint(min(32, mid_max), min(256, mid_max))
+    return random.randint(min(64, mid_max), mid_max)
+
+
+def _snap_newline(tokens: list, pos: int, window: int = 96) -> int:
+    """Snap a split position to the start of the next line (newline token + 1).
+    Falls back to the raw offset when no newline is nearby (single-line code)."""
+    for j in range(pos, min(len(tokens), pos + window)):
+        if tokens[j] in NEWLINE_IDS:
+            return j + 1
+    return pos
+
+
+def _fim_splits(tokens: list, n: int):
+    L = len(tokens)
+    cut = _snap_newline(tokens, random.randint(L // 4, 7 * L // 10))
     splits = []
     for i in range(n):
         remaining = L - cut
         reserve = 16 * (n - i - 1) + 4
         mid_max = min(L // 4, remaining - reserve)
-        if mid_max < 16:
+        if mid_max < 4:
             break
-        mid_len = random.randint(min(64, mid_max), mid_max)
-        mid_end = cut + mid_len
+        mid_len = _sample_mid_len(mid_max)
+        mid_end = _snap_newline(tokens, cut + mid_len)
+        if mid_end - cut < 4:
+            mid_end = cut + mid_len
+        mid_end = min(mid_end, L)
+        if mid_end - cut < 4:
+            break
         splits.append((cut, mid_end))
         cut = mid_end
     return splits
@@ -584,8 +613,6 @@ def _flip_no_context() -> bool:
 
 
 def _fim_context(tokens: list, pre_end: int, mid_end: int, block_size: int):
-    if _flip_no_context():
-        return None
     query = _fim_query(tokens, pre_end, mid_end)
     if not query:
         return None
@@ -597,7 +624,11 @@ def _plan_fim(tokens: list, cat_id: int, block_size: int):
     global _sample_pool
     is_code = cat_id in CODE_CATEGORY_IDS
     do_fim = is_code and random.random() < FIM_RATIO and len(tokens) >= MIN_SAMPLE_TOKENS
+    use_ctx = False
     if do_fim:
+        # Decide context usage first so the code window gets the full budget
+        # when retrieval is skipped (no-context samples don't need the 1024 reserve).
+        use_ctx = FIM_MODE and not _flip_no_context()
         _stat("fim_eligible")
         n0 = len(tokens)
         if n0 < 1024:
@@ -608,11 +639,15 @@ def _plan_fim(tokens: list, cat_id: int, block_size: int):
             _stat("hist_4k")
         else:
             _stat("hist_8k")
-        fim_cap = block_size - 3 - LANG_OVERHEAD
         if FIM_MODE:
-            fim_cap = block_size - CONTEXT_MAX_TOKENS - 6 - LANG_OVERHEAD
+            if use_ctx:
+                fim_cap = block_size - CONTEXT_MAX_TOKENS - 6 - LANG_OVERHEAD
+            else:
+                fim_cap = block_size - 3 - LANG_OVERHEAD
             if FIM_MAX_SAMPLE_TOKENS > 0:
                 fim_cap = min(fim_cap, FIM_MAX_SAMPLE_TOKENS)
+        else:
+            fim_cap = block_size - 3 - LANG_OVERHEAD
         if len(tokens) > fim_cap:
             _stat("fim_trunc")
             tail = tokens[fim_cap:]
@@ -623,17 +658,17 @@ def _plan_fim(tokens: list, cat_id: int, block_size: int):
                     print(f"WARNING: pool full ({MAX_CACHE_SIZE}), discarding tail of sample")
             tokens = tokens[:fim_cap]
         L = len(tokens)
-        splits = _fim_splits(L, FIM_VARIANTS)
+        splits = _fim_splits(tokens, FIM_VARIANTS)
         if not splits:
-            splits = _fim_splits(L, 1)
+            splits = _fim_splits(tokens, 1)
         if not splits:
             do_fim = False
-    return tokens, splits if do_fim else []
+    return tokens, splits if do_fim else [], use_ctx
 
 
-def _process_sample(tokens: list, cat_id: int, block_size: int, splits=None, context_map=None):
+def _process_sample(tokens: list, cat_id: int, block_size: int, splits=None, context_map=None, use_ctx=None):
     if splits is None:
-        tokens, splits = _plan_fim(tokens, cat_id, block_size)
+        tokens, splits, use_ctx = _plan_fim(tokens, cat_id, block_size)
         context_map = None
     if not splits:
         headers, ends = _CHATML.analyze(tokens)
@@ -650,7 +685,7 @@ def _process_sample(tokens: list, cat_id: int, block_size: int, splits=None, con
     variants = []
     for s in splits:
         context = None
-        if FIM_MODE:
+        if FIM_MODE and use_ctx:
             if context_map is not None:
                 context = context_map.get(s)
             else:
@@ -719,14 +754,14 @@ def _build_batch_from_pool(batch_size: int, block_size: int):
     context_maps = [{} for _ in chosen]
     for cat, tokens in chosen:
         record_raw_tokens(tokens)
-        pt, splits = _plan_fim(tokens, cat, block_size)
-        plans.append((pt, cat, splits))
+        pt, splits, use_ctx = _plan_fim(tokens, cat, block_size)
+        plans.append((pt, cat, splits, use_ctx))
     pending = []
     queried = []
     if FIM_MODE:
-        for i, (pt, cat, splits) in enumerate(plans):
+        for i, (pt, cat, splits, use_ctx) in enumerate(plans):
             for s in splits:
-                if _flip_no_context():
+                if not use_ctx:
                     context_maps[i][s] = None
                     continue
                 q = _fim_query(pt, s[0], s[1])
@@ -740,8 +775,8 @@ def _build_batch_from_pool(batch_size: int, block_size: int):
             if ctx_block is None:
                 _stat("rag_miss")
             context_maps[i][s] = ctx_block
-    for i, (pt, cat, splits) in enumerate(plans):
-        outs = _process_sample(pt, cat, block_size, splits=splits, context_map=context_maps[i])
+    for i, (pt, cat, splits, use_ctx) in enumerate(plans):
+        outs = _process_sample(pt, cat, block_size, splits=splits, context_map=context_maps[i], use_ctx=use_ctx)
         processed.extend(outs)
         cats.extend([cat] * len(outs))
     for seq, mt, fim_flag in reversed(processed):
@@ -1115,9 +1150,9 @@ if __name__ == "__main__":
                     continue
                 tokens = tokens[:fim_cap]
                 L = len(tokens)
-                pre_end = max(32, L // 2)
-                mid_end = pre_end + max(16, min(L // 4, L - pre_end - 1))
-                if mid_end >= L:
+                pre_end = _snap_newline(tokens, max(32, L // 2))
+                mid_end = _snap_newline(tokens, pre_end + max(16, min(L // 4, L - pre_end - 1)))
+                if mid_end <= pre_end or mid_end >= L:
                     continue
                 if FIM_MODE:
                     query = _fim_query(tokens, pre_end, mid_end)
