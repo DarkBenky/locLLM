@@ -1,12 +1,13 @@
 # Add this datasets
 
-- [ ] KV cache for model infrence
+- [x] KV cache for model inference (fixed: inference.py decode loop used legacy N_LAYERS=26; now uses checkpoint-derived layer count)
 
 - [ ] Fim mode
-  - [ ] injection language for contex part and fim part maybe use some special tokens like <lanng> python </lang>
+  - [x] injection language for contex part and fim part maybe use some special tokens like <lanng> python </lang> (implemented: <lang>/</lang> = BASE+12/+13, injected into context + prefix + suffix)
   - [x] For example that is logged in terminal we should show sample that will look like training data in FIM mode so <context> + <fim_parts> + model output
-  - [ ] Maybe also some special token for context relevancy would be nice so the context would have
-  - [ ] Note: based what on sources the less complex solution that just adds the ```<lang>, </lang>``` is more standart
+  - [ ] Maybe also some special token for context relevancy would be nice so the context would have (deferred: embedding distance is uncalibrated; same_lang is redundant once both lang tags exist)
+  - [ ] Note: based what on sources the less complex solution that just adds the ```<lang>, </lang>``` is more standard (adopted this approach)
+  
   ```
   <context_start>
   
@@ -80,12 +81,11 @@
   settings
   <fim_end>
   ```
-  
 
 - [ ] Distill the current dataset only for code
-  - [ ] create training script that will be used for fim training
-    - [ ] add special token <context_start> and </context_end>
-    - [ ] inject context to model fim input
+  - [x] create training script that will be used for fim training (model/main_big.py)
+    - [x] add special token <context_start> and </context_end>
+    - [x] inject context to model fim input
 
 - [ ] TODO: multi-GPU training (not implemented yet)
 

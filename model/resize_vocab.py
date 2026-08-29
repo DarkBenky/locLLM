@@ -38,17 +38,17 @@ def resize_optimizer(old_opt_sd, emb_idx, old_vocab, new_vocab):
 
 
 def main():
-    ap = argparse.ArgumentParser(description="Resize a locLLM checkpoint to the +10 ChatML vocab")
+    ap = argparse.ArgumentParser(description="Resize a locLLM checkpoint to the current reserved-token vocab (FIM + ChatML + context + lang)")
     ap.add_argument("src")
     ap.add_argument("dst")
     ap.add_argument("--n-layers", type=int, required=True)
     ap.add_argument("--dim", type=int, default=1024)
     ap.add_argument("--n-heads", type=int, default=16)
-    ap.add_argument("--block-size", type=int, default=4096)
+    ap.add_argument("--block-size", type=int, default=8192)
     args = ap.parse_args()
 
     sp = spm.SentencePieceProcessor(model_file=TOKENIZER_MODEL_PATH)
-    new_vocab = sp.get_piece_size() + chatml.EXTRA_FIM + chatml.EXTRA_CHATML + chatml.EXTRA_CONTEXT
+    new_vocab = sp.get_piece_size() + chatml.reserved_total()
 
     ckpt = torch.load(args.src, map_location="cpu", mmap=True)
     old_sd = ckpt["model"]

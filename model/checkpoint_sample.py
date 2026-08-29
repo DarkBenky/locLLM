@@ -81,6 +81,7 @@ def run_fim_checkpoint_sample(step: int, model, sp, block_size: int, device: str
     try:
         base = sp.get_piece_size()
         ctx = chatml.context_ids(base)
+        lang = chatml.lang_ids(base)
         toks = LAST_FIM_TOKENS
         mid = LAST_FIM_MID
         fim_pre, fim_suf, fim_mid, fim_end = base, base + 1, base + 2, base + 3
@@ -88,13 +89,16 @@ def run_fim_checkpoint_sample(step: int, model, sp, block_size: int, device: str
         ce = toks.index(ctx["end"]) if ctx["end"] in toks else -1
         pi = toks.index(fim_pre)
         si = toks.index(fim_suf)
+        extra = {fim_pre: "", fim_suf: "", fim_mid: "", fim_end: "",
+                 ctx["start"]: "<context_start>", ctx["end"]: "</context_end>",
+                 lang["open"]: "<lang>", lang["close"]: "</lang>"}
         context_text = None
         if cs >= 0 and ce > cs:
-            context_text = sp.decode(toks[cs + 1:ce])
-        prefix_text = sp.decode(toks[pi + 1:si])
+            context_text = chatml.safe_decode(toks[cs + 1:ce], sp, chatml.reserved_ids(base), extra=extra)
+        prefix_text = chatml.safe_decode(toks[pi + 1:si], sp, chatml.reserved_ids(base), extra=extra)
         if len(prefix_text) > 600:
             prefix_text = "[...] " + prefix_text[-600:]
-        suffix_text = sp.decode(toks[si + 1:mid])
+        suffix_text = chatml.safe_decode(toks[si + 1:mid], sp, chatml.reserved_ids(base), extra=extra)
         if len(suffix_text) > 600:
             suffix_text = suffix_text[:600] + " [...]"
 
@@ -110,9 +114,7 @@ def run_fim_checkpoint_sample(step: int, model, sp, block_size: int, device: str
         gen_ids = gen[0, prompt.shape[1]:].tolist()
         if gen_ids:
             gen_text = chatml.safe_decode(
-                gen_ids, sp, chatml.reserved_ids(base),
-                extra={base: "", base + 1: "", base + 2: "", base + 3: "",
-                       ctx["start"]: "<context_start>", ctx["end"]: "</context_end>"})
+                gen_ids, sp, chatml.reserved_ids(base), extra=extra)
         else:
             gen_text = "<|fim_end|>"
         block = _fmt_fim_sample(step, context_text, prefix_text, suffix_text, gen_text)

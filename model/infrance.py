@@ -32,6 +32,8 @@ class GenerateRequest(BaseModel):
 class FIMRequest(BaseModel):
     prefix: str
     suffix: str = ""
+    lang: str | None = None
+    context: str | None = None
     max_tokens: int = 256
     temperature: float = 1.0
     top_k: int = 0
@@ -71,12 +73,14 @@ def generate(req: GenerateRequest):
 def generate_fim(req: FIMRequest):
     prefix_ids = engine.sp.encode(req.prefix)
     suffix_ids = engine.sp.encode(req.suffix)
+    context_ids = engine.sp.encode(req.context) if req.context else None
 
     def stream():
         with _lock:
             yield from sse_stream(
                 engine.generate_fim(prefix_ids, suffix_ids, req.max_tokens,
-                                    req.temperature, req.top_k, req.top_p, req.seed)
+                                    req.temperature, req.top_k, req.top_p, req.seed,
+                                    lang=req.lang, context_ids=context_ids)
             )
 
     return StreamingResponse(stream(), media_type="text/event-stream")

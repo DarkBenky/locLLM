@@ -18,9 +18,8 @@ TOKENIZER_MODEL_PATH = os.path.join(BASE, "..", "tok", "tokenize", "tokenizer_mo
 CKPT_DIR = os.path.join(BASE, "checkpoints")
 
 DIM = 1024
-N_LAYERS = 26
 N_HEADS = 16
-BLOCK_SIZE = 4096
+BLOCK_SIZE = 8192
 HEAD_DIM = DIM // N_HEADS
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
@@ -93,9 +92,26 @@ class InferenceEngine:
         base = self.sp.get_piece_size()
         self.fim_pre, self.fim_suf, self.fim_mid, self.fim_end = base, base + 1, base + 2, base + 3
         self.im_end = base + chatml.IM_END_OFF
+        ctx_ids = chatml.context_ids(base)
+        self.ctx_start, self.ctx_end = ctx_ids["start"], ctx_ids["end"]
+        lang_ids = chatml.lang_ids(base)
+        self.lang_open, self.lang_close = lang_ids["open"], lang_ids["close"]
         state = torch.load(ckpt_path, map_location="cpu", mmap=True)["model"]
         self.vocab_size = state["tok_emb.weight"].shape[0]
         self.n_layers = 1 + max(int(k.split(".")[1]) for k in state if k.startswith("blocks."))
+        # Old checkpoints predate the reserved lang/context tokens: pad the
+        # embeddings (mean-init, same as main_big.resize_vocab_embeddings) so
+        # <lang>/<context_start> IDs are in range.
+        reserved = base + chatml.reserved_total()
+        if self.vocab_size < reserved:
+            print(f"  resizing vocab {self.vocab_size} -> {reserved} (padding reserved tokens)")
+            for k in ("tok_emb.weight", "lm_head.weight"):
+                w = state[k]
+                new_w = torch.zeros(reserved, *w.shape[1:], dtype=w.dtype)
+                new_w[:w.shape[0]] = w
+                new_w[w.shape[0]:] = w.mean(dim=0, keepdim=True)
+                state[k] = new_w
+            self.vocab_size = reserved
         self.model = Transformer(
             vocab_size=self.vocab_size, dim=DIM, n_layers=self.n_layers,
             n_heads=N_HEADS, max_seq_len=BLOCK_SIZE,
@@ -144,7 +160,7 @@ class InferenceEngine:
         q, k, v = self.pre0(x, cos_p, sin_p, pos_t)
         out = F.scaled_dot_product_attention(
             q, self.k_cache[0][:, :, :pos + 1], self.v_cache[0][:, :, :pos + 1])
-        for i in range(N_LAYERS - 1):
+        for i in range(self.n_layers - 1):
             x, q, k, v = self.post_pre[i](x, out, cos_p, sin_p, pos_t)
             out = F.scaled_dot_product_attention(
                 q, self.k_cache[i + 1][:, :, :pos + 1], self.v_cache[i + 1][:, :, :pos + 1])
@@ -189,7 +205,9 @@ class InferenceEngine:
         return chatml.safe_decode(
             tokens, self.sp, chatml.reserved_ids(self.sp.get_piece_size()),
             extra={self.fim_pre: "", self.fim_suf: "",
-                   self.fim_mid: "", self.fim_end: ""})
+                   self.fim_mid: "", self.fim_end: "",
+                   self.ctx_start: "<context_start>", self.ctx_end: "</context_end>",
+                   self.lang_open: "<lang>", self.lang_close: "</lang>"})
 
     def generate(self, prompt_ids, max_new_tokens=256, temperature=1.0, top_k=0, top_p=1.0, seed=None, stop_tokens=None):
         gen = None
@@ -207,18 +225,32 @@ class InferenceEngine:
             pos = prompt.numel() - 1
             yield from self._decode_loop(last, pos, max_new_tokens, temperature, top_k, top_p, gen, stop_tokens)
 
+    def _lang_tensor(self, lang: str):
+        ids = self.sp.encode(lang.strip().lower(), out_type=int)
+        return torch.tensor([self.lang_open, *ids, self.lang_close],
+                            dtype=torch.long, device=self.device)
+
     def generate_fim(self, prefix_ids, suffix_ids, max_new_tokens=256, temperature=1.0,
-                     top_k=0, top_p=1.0, seed=None):
+                     top_k=0, top_p=1.0, seed=None, lang=None, context_ids=None):
         gen = None
         if seed is not None:
             gen = torch.Generator(device=self.device)
             gen.manual_seed(seed)
-        pre = torch.tensor([self.fim_pre], dtype=torch.long, device=self.device)
-        suf = torch.tensor([self.fim_suf], dtype=torch.long, device=self.device)
-        mid = torch.tensor([self.fim_mid], dtype=torch.long, device=self.device)
-        prefix = torch.as_tensor(prefix_ids, dtype=torch.long, device=self.device)
-        suffix = torch.as_tensor(suffix_ids, dtype=torch.long, device=self.device)
-        prompt = torch.cat([pre, prefix, suf, suffix, mid])
+        pieces = []
+        if context_ids:
+            pieces.append(torch.tensor([self.ctx_start], dtype=torch.long, device=self.device))
+            pieces.append(torch.as_tensor(context_ids, dtype=torch.long, device=self.device))
+            pieces.append(torch.tensor([self.ctx_end], dtype=torch.long, device=self.device))
+        pieces.append(torch.tensor([self.fim_pre], dtype=torch.long, device=self.device))
+        if lang:
+            pieces.append(self._lang_tensor(lang))
+        pieces.append(torch.as_tensor(prefix_ids, dtype=torch.long, device=self.device))
+        pieces.append(torch.tensor([self.fim_suf], dtype=torch.long, device=self.device))
+        if lang:
+            pieces.append(self._lang_tensor(lang))
+        pieces.append(torch.as_tensor(suffix_ids, dtype=torch.long, device=self.device))
+        pieces.append(torch.tensor([self.fim_mid], dtype=torch.long, device=self.device))
+        prompt = torch.cat(pieces)
         limit = max(1, BLOCK_SIZE - max_new_tokens)
         prompt = prompt[-limit:]
         with torch.inference_mode():

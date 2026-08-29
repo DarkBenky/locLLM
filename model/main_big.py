@@ -35,13 +35,13 @@ import chatml
 API = "http://91.98.145.193:8823"
 FIM_API = "http://localhost:8823"
 FIM_SEARCH_API = "http://localhost:8234/search"
-CONTEXT_MAX_TOKENS = 512
+CONTEXT_MAX_TOKENS = 1024
 
 TOKENIZER_MODEL_PATH = "../tok/tokenize/tokenizer_models/tokenizer.model"
 
-BLOCK_SIZE = 4096
-BATCH_SIZE = 4
-GRAD_ACCUM = 6  # effective batch = BATCH_SIZE * BLOCK_SIZE * GRAD_ACCUM (~98k tokens/step)
+BLOCK_SIZE = 8192
+BATCH_SIZE = 2
+GRAD_ACCUM = 6  # effective batch = BATCH_SIZE * BLOCK_SIZE * GRAD_ACCUM (2*8192*6 ≈ 98k tokens/step)
 LOSS_SKIP_THRESHOLD = 5.0  # per-micro-step loss above this = corrupted batch -> skip it
 MIN_SAMPLE_TOKENS = 64  # drop degenerate/short samples (loss over a few tokens is pure noise)
 DIM = 1024
@@ -57,8 +57,8 @@ RANDOM_SAMPLING = True
 
 MAX_STEPS = 300_000
 WARMUP_STEPS = 300
-WAKEUP_STEPS = 3000
-VOCAB_WAKEUP_STEPS = 500
+WAKEUP_STEPS = 1500  # wake-up phase (LR burst + freeze) after a layer upscale
+VOCAB_WAKEUP_STEPS = 1500  # wake-up phase when only the vocab was resized
 WAKEUP_LR = 1e-4
 MAX_LR = 1e-4
 MIN_LR = 1e-5
@@ -68,13 +68,19 @@ GRAD_CLIP = 1.0
 CHATML_MASK_PROB = 0.8
 FIM_RATIO = 0.95
 FIM_VARIANTS = 1  # FIM samples generated per code sample
-FIM_MAX_SAMPLE_TOKENS = 0  # 0 = no cap (full 4096 window); e.g. 2048 trades quality for ~1.8x speed
+FIM_MAX_SAMPLE_TOKENS = 0  # 0 = no cap (full window); e.g. 2048 trades quality for ~1.8x speed
+NO_CONTEXT_PROB = 0.3  # Phase C: drop RAG context for this fraction of FIM samples (robustness)
+ROPE_BASE = 10000.0  # test e.g. 100000 for longer extrapolation at 8192
 LOSS_CHUNK = 1024  # sequence-chunk size for head+loss (bounds logits memory)
 
 LOG_EVERY = 10
 CKPT_EVERY = 125
 EVAL_EVERY = 250
-EVAL_SAMPLES = 8
+EVAL_FIRST_AFTER = 10  # run one early eval after N steps (fail-fast sanity check)
+EVAL_SAMPLES = 64
+FIM_EVAL_SAMPLES = 32
+FIM_EVAL_GEN_SAMPLES = 4
+FIM_EVAL_GEN_TOKENS = 32
 CKPT_DIR = "./checkpoints"
 
 PRECISION = "bf16"
@@ -86,11 +92,16 @@ USE_SCALER = False
 
 sp = spm.SentencePieceProcessor(model_file=TOKENIZER_MODEL_PATH)
 BASE_VOCAB = sp.get_piece_size()
-VOCAB_SIZE = BASE_VOCAB + chatml.EXTRA_FIM + chatml.EXTRA_CHATML + chatml.EXTRA_CONTEXT
+VOCAB_SIZE = BASE_VOCAB + chatml.reserved_total()
 
 FIM_PRE, FIM_SUF, FIM_MID, FIM_END = BASE_VOCAB, BASE_VOCAB + 1, BASE_VOCAB + 2, BASE_VOCAB + 3
 CONTEXT_IDS = chatml.context_ids(BASE_VOCAB)
 CONTEXT_START, CONTEXT_END = CONTEXT_IDS["start"], CONTEXT_IDS["end"]
+LANG_IDS = chatml.lang_ids(BASE_VOCAB)
+LANG_OPEN, LANG_CLOSE = LANG_IDS["open"], LANG_IDS["close"]
+# Worst-case tokens for the three <lang>...</lang> blocks (context + prefix + suffix):
+# 3 blocks x (2 marker tokens + up to 6 tokens for the language name).
+LANG_OVERHEAD = 24
 
 _CHATML = chatml.ChatMLDetector(sp)
 CHATML_IDS = chatml.reserved_ids(BASE_VOCAB)
@@ -313,7 +324,7 @@ def _search_texts(texts: list) -> list:
         res = _get_session().post(
             FIM_SEARCH_API, json={"texts": texts, "top_k": 1}, timeout=10)
         data = res.json()
-        return [d["results"][0]["code"] if d.get("results") else None for d in data]
+        return [d["results"][0] if d.get("results") else None for d in data]
     except Exception as e:
         print(f"  WARNING: RAG search failed: {e}")
         return [None] * len(texts)
@@ -331,11 +342,11 @@ def search_rag_batch(queries: list) -> list:
             misses.append(i)
     for j in range(0, len(misses), RAG_BATCH_MAX):
         chunk = misses[j:j + RAG_BATCH_MAX]
-        codes = _search_texts([queries[i] for i in chunk])
-        for i, code in zip(chunk, codes):
-            if code is not None:
-                _rag_cache[queries[i]] = code
-            out[i] = code
+        records = _search_texts([queries[i] for i in chunk])
+        for i, record in zip(chunk, records):
+            if record is not None:
+                _rag_cache[queries[i]] = record
+            out[i] = record
     return out
 
 
@@ -361,7 +372,7 @@ def get_next_samples(count: int) -> list[tuple[int, list[int]]]:
     return samples
 
 
-def get_code_category_ids() -> set[int]:
+def get_category_index() -> tuple[set[int], dict[int, str]]:
     res = _request_with_retry(API + "/api/get-category-index")
     cat_map = res.json()
     code_names = {
@@ -385,10 +396,36 @@ def get_code_category_ids() -> set[int]:
         "solidity", "vyper", "move", "cairo", "noir",
         "q#", "starlark", "ballerina",
     }
-    return {cid for name, cid in cat_map.items() if name.strip().lower() in code_names}
+    code_ids = set()
+    name_by_id = {}
+    for name, cid in cat_map.items():
+        norm = normalize_lang(name)
+        name_by_id[cid] = norm
+        if name.strip().lower() in code_names:
+            code_ids.add(cid)
+    return code_ids, name_by_id
+
+
+LANG_ALIASES = {"golang": "go", "cpp": "c++"}
+
+
+def normalize_lang(name) -> str:
+    n = (name or "").strip().lower()
+    return LANG_ALIASES.get(n, n)
+
+
+def lang_block_ids(name) -> list[int] | None:
+    """<lang>name</lang> token block, or None if the language is unknown/generic."""
+    if not name:
+        return None
+    n = normalize_lang(name)
+    if n in ("star_coder", "otherlanguage", "other language", "code"):
+        return None
+    return [LANG_OPEN, *sp.encode(n, out_type=int), LANG_CLOSE]
 
 
 CODE_CATEGORY_IDS = set()
+CAT_NAME_BY_ID: dict[int, str] = {}
 
 MAX_CACHE_SIZE = 1024
 
@@ -399,6 +436,30 @@ BATCH_QUEUE_MAX = 4
 _sample_pool: list[tuple[int, list[int]]] = []
 _batch_queue = queue.Queue(maxsize=BATCH_QUEUE_MAX)
 _prefetch_thread: "threading.Thread | None" = None
+
+# --- lightweight instrumentation counters (read by the trainer loop) ---
+_stats_lock = threading.Lock()
+_stats = {
+    "fim_eligible": 0,      # FIM-eligible code samples planned
+    "fim_trunc": 0,         # ... truncated to fim_cap
+    "hist_1k": 0, "hist_2k": 0, "hist_4k": 0, "hist_8k": 0,  # pre-truncation length buckets
+    "rag_q": 0,             # RAG queries issued
+    "rag_miss": 0,          # ... that produced no context
+    "ctx_n": 0, "ctx_len": 0, "ctx_clip": 0,  # context built / tokens used / clipped at cap
+}
+
+
+def _stat(key: str, n: int = 1):
+    with _stats_lock:
+        _stats[key] += n
+
+
+def _drain_stats() -> dict:
+    with _stats_lock:
+        s = dict(_stats)
+        for k in _stats:
+            _stats[k] = 0
+    return s
 
 
 def _fetch_samples_with_retry(count: int) -> list[tuple[int, list[int]]]:
@@ -441,36 +502,33 @@ def _fim_splits(L: int, n: int):
     return splits
 
 
-def _fim_variant(seq, pre_end: int, mid_end: int, context_ids=None):
+def _fim_variant(seq, pre_end: int, mid_end: int, context=None, sample_lang=None):
     prefix = seq[:pre_end]
     middle = seq[pre_end:mid_end]
     suffix = seq[mid_end:]
     parts = []
-    if context_ids is not None:
-        parts.extend([
-            torch.tensor([CONTEXT_START], dtype=torch.long),
-            torch.tensor(context_ids, dtype=torch.long),
-            torch.tensor([CONTEXT_END], dtype=torch.long),
-        ])
-    parts.extend([
-        torch.tensor([FIM_PRE], dtype=torch.long),
-        prefix,
-        torch.tensor([FIM_SUF], dtype=torch.long),
-        suffix,
-        torch.tensor([FIM_MID], dtype=torch.long),
-        middle,
-        torch.tensor([FIM_END], dtype=torch.long),
-    ])
+    if context is not None:
+        parts.append(torch.tensor(context, dtype=torch.long))
+    s_lang = lang_block_ids(sample_lang)
+    parts.append(torch.tensor([FIM_PRE], dtype=torch.long))
+    if s_lang is not None:
+        parts.append(torch.tensor(s_lang, dtype=torch.long))
+    parts.append(prefix)
+    parts.append(torch.tensor([FIM_SUF], dtype=torch.long))
+    if s_lang is not None:
+        parts.append(torch.tensor(s_lang, dtype=torch.long))
+    parts.append(suffix)
+    parts.append(torch.tensor([FIM_MID], dtype=torch.long))
+    parts.append(middle)
+    parts.append(torch.tensor([FIM_END], dtype=torch.long))
     fim_seq = torch.cat(parts)
     n = len(fim_seq) - 1
     mt = torch.zeros(n, dtype=torch.bool)
-    ctx_off = 0
-    if context_ids is not None:
-        ctx_off = len(context_ids) + 2
-    mid_pos = ctx_off + len(prefix) + len(suffix) + 2
-    if n > mid_pos:
-        end = min(n - mid_pos, len(fim_seq) - mid_pos - 1)
-        mt[mid_pos:mid_pos + end] = True
+    # <fim_middle> appears exactly once; everything from it on is trainable
+    # (middle + <fim_end>); context, lang tags, prefix and suffix are masked.
+    mid_idx = int((fim_seq == FIM_MID).nonzero()[0].item())
+    if mid_idx < n:
+        mt[mid_idx:] = True
     return fim_seq, mt
 
 
@@ -491,27 +549,48 @@ def _fim_query(tokens: list, pre_end: int, mid_end: int):
     return query
 
 
-def _make_context(tokens: list, code: str, block_size: int):
+def _make_context(tokens: list, record, block_size: int):
+    if not record:
+        return None
+    code = record.get("code") if isinstance(record, dict) else None
     if not code:
         return None
+    block = [CONTEXT_START]
+    lang_block = lang_block_ids(record.get("lang"))
+    if lang_block is not None:
+        block.extend(lang_block)
     ctx = sp.encode(code, out_type=int)
     if len(ctx) < 8:
         return None
-    room = max(0, block_size - len(tokens) - 6)
-    if room < 8:
+    overhead = len(block) + 1  # context markers + lang block; +1 for CONTEXT_END
+    room = max(0, block_size - len(tokens) - 6 - LANG_OVERHEAD)
+    if room < 8 + overhead:
         return None
-    ctx = ctx[:min(CONTEXT_MAX_TOKENS, room)]
+    limit = min(CONTEXT_MAX_TOKENS, room - overhead)
+    if len(ctx) > limit:
+        _stat("ctx_clip")
+    ctx = ctx[:limit]
     if len(ctx) < 8:
         return None
-    return ctx
+    block.extend(ctx)
+    block.append(CONTEXT_END)
+    _stat("ctx_n")
+    _stat("ctx_len", len(ctx))
+    return block
+
+
+def _flip_no_context() -> bool:
+    return NO_CONTEXT_PROB > 0.0 and random.random() < NO_CONTEXT_PROB
 
 
 def _fim_context(tokens: list, pre_end: int, mid_end: int, block_size: int):
+    if _flip_no_context():
+        return None
     query = _fim_query(tokens, pre_end, mid_end)
     if not query:
         return None
-    code = search_rag(query)
-    return _make_context(tokens, code, block_size)
+    record = search_rag(query)
+    return _make_context(tokens, record, block_size)
 
 
 def _plan_fim(tokens: list, cat_id: int, block_size: int):
@@ -519,12 +598,23 @@ def _plan_fim(tokens: list, cat_id: int, block_size: int):
     is_code = cat_id in CODE_CATEGORY_IDS
     do_fim = is_code and random.random() < FIM_RATIO and len(tokens) >= MIN_SAMPLE_TOKENS
     if do_fim:
-        fim_cap = block_size - 3
+        _stat("fim_eligible")
+        n0 = len(tokens)
+        if n0 < 1024:
+            _stat("hist_1k")
+        elif n0 < 2048:
+            _stat("hist_2k")
+        elif n0 < 4096:
+            _stat("hist_4k")
+        else:
+            _stat("hist_8k")
+        fim_cap = block_size - 3 - LANG_OVERHEAD
         if FIM_MODE:
-            fim_cap = block_size - CONTEXT_MAX_TOKENS - 6
+            fim_cap = block_size - CONTEXT_MAX_TOKENS - 6 - LANG_OVERHEAD
             if FIM_MAX_SAMPLE_TOKENS > 0:
                 fim_cap = min(fim_cap, FIM_MAX_SAMPLE_TOKENS)
         if len(tokens) > fim_cap:
+            _stat("fim_trunc")
             tail = tokens[fim_cap:]
             if len(tail) >= 16:
                 if len(_sample_pool) < MAX_CACHE_SIZE:
@@ -556,6 +646,7 @@ def _process_sample(tokens: list, cat_id: int, block_size: int, splits=None, con
         return [(torch.tensor(toks, dtype=torch.long), mt, False)]
 
     seq = torch.tensor(tokens, dtype=torch.long)
+    sample_lang = CAT_NAME_BY_ID.get(cat_id)
     variants = []
     for s in splits:
         context = None
@@ -564,7 +655,7 @@ def _process_sample(tokens: list, cat_id: int, block_size: int, splits=None, con
                 context = context_map.get(s)
             else:
                 context = _fim_context(tokens, s[0], s[1], block_size)
-        vseq, vmt = _fim_variant(seq, s[0], s[1], context)
+        vseq, vmt = _fim_variant(seq, s[0], s[1], context, sample_lang)
         variants.append((vseq, vmt, True))
     return variants
 
@@ -635,13 +726,20 @@ def _build_batch_from_pool(batch_size: int, block_size: int):
     if FIM_MODE:
         for i, (pt, cat, splits) in enumerate(plans):
             for s in splits:
+                if _flip_no_context():
+                    context_maps[i][s] = None
+                    continue
                 q = _fim_query(pt, s[0], s[1])
                 if q:
                     pending.append((i, s))
                     queried.append(q)
-        codes = search_rag_batch(queried)
-        for (i, s), code in zip(pending, codes):
-            context_maps[i][s] = _make_context(plans[i][0], code, block_size)
+        records = search_rag_batch(queried)
+        _stat("rag_q", len(queried))
+        for (i, s), record in zip(pending, records):
+            ctx_block = _make_context(plans[i][0], record, block_size)
+            if ctx_block is None:
+                _stat("rag_miss")
+            context_maps[i][s] = ctx_block
     for i, (pt, cat, splits) in enumerate(plans):
         outs = _process_sample(pt, cat, block_size, splits=splits, context_map=context_maps[i])
         processed.extend(outs)
@@ -735,7 +833,7 @@ if __name__ == "__main__":
         AUTOCAST_DTYPE = torch.float32
         USE_SCALER = False
 
-    CODE_CATEGORY_IDS = get_code_category_ids()
+    CODE_CATEGORY_IDS, CAT_NAME_BY_ID = get_category_index()
     print(f"Code categories for FIM: {len(CODE_CATEGORY_IDS)} IDs")
 
     samples = get_next_samples(1)
@@ -746,7 +844,7 @@ if __name__ == "__main__":
 
     print("building model (128 layers, ~1.6B params) ...", flush=True)
     model = Transformer(vocab_size=VOCAB_SIZE, dim=DIM, n_layers=N_LAYERS, n_heads=N_HEADS,
-                         max_seq_len=BLOCK_SIZE).to(DEVICE)
+                         max_seq_len=BLOCK_SIZE, rope_base=ROPE_BASE).to(DEVICE)
     if MODEL_DTYPE != torch.float32:
         model.to(MODEL_DTYPE)
     print(f"model dtype: {MODEL_DTYPE}", flush=True)
@@ -874,7 +972,7 @@ if __name__ == "__main__":
         if (y == -100).all():
             return 0.0, 0.0, 0.0, 0, {}
         with torch.autocast(device_type="cuda", dtype=AUTOCAST_DTYPE, enabled=(DEVICE == "cuda")):
-            hidden = model(x, return_hidden=True)  # (B, T, DIM) — ~33 MB at T=4096
+            hidden = model(x, return_hidden=True)  # (B, T, DIM) — ~33 MB at T=4096, ~66 MB at T=8192
             hidden = hidden.to(MODEL_DTYPE)        # final_norm promotes to fp32 under autocast; normalize
             seq_len = hidden.shape[1]
 
@@ -931,6 +1029,7 @@ if __name__ == "__main__":
         return loss_val, math.exp(min(loss_val, 20)), acc, n_tok, cat_stats
 
     eval_set = []
+    fim_eval_set = []
 
     def build_eval_set(n: int = EVAL_SAMPLES):
         eval_set.clear()
@@ -955,7 +1054,7 @@ if __name__ == "__main__":
         model.eval()
         total_loss = 0.0
         total_tokens = 0
-        step_chunk = max(1, len(eval_set) // 2)  # process eval in small batches to bound logits memory
+        step_chunk = min(4, max(1, len(eval_set) // 2))  # bound logits memory at 8192
         for s0 in range(0, len(eval_set), step_chunk):
             batch = eval_set[s0:s0 + step_chunk]
             x = torch.full((len(batch), BLOCK_SIZE), 0, dtype=torch.long, device=DEVICE)
@@ -977,22 +1076,145 @@ if __name__ == "__main__":
                         mt[:n].to(seq.device), seq[1:n + 1],
                         torch.full_like(seq[1:n + 1], -100))
             with torch.autocast(device_type="cuda", dtype=AUTOCAST_DTYPE, enabled=(DEVICE == "cuda")):
-                logits, _ = model(x)
-                loss = F.cross_entropy(
-                    logits.view(-1, logits.size(-1)),
-                    y.reshape(-1),
-                    reduction="sum",
-                )
+                hidden = model(x, return_hidden=True)
+                hidden = hidden.to(MODEL_DTYPE)
+                losses = []
+                for c in range(0, hidden.shape[1], LOSS_CHUNK):
+                    logits_c = model.lm_head(hidden[:, c:c + LOSS_CHUNK])
+                    losses.append(F.cross_entropy(
+                        logits_c.reshape(-1, logits_c.size(-1)),
+                        y[:, c:c + LOSS_CHUNK].reshape(-1),
+                        reduction="sum"))
+                loss = sum(losses)
             total_loss += loss.item()
             total_tokens += int((y != -100).sum().item())
-            del logits, loss, x, y
+            del hidden, loss, x, y
         model.train()
         val = total_loss / max(total_tokens, 1)
         print(f"  eval @ step {step}: loss {val:.4f} | ppl {math.exp(min(val, 20)):.1f}")
         wandb.log({"eval_loss": val, "eval_ppl": math.exp(min(val, 20))}, step=step)
 
+    def build_fim_eval_set(n: int = FIM_EVAL_SAMPLES):
+        """Deterministic FIM eval set: fixed split + RAG context, built once per run."""
+        fim_eval_set.clear()
+        fim_cap = (BLOCK_SIZE - CONTEXT_MAX_TOKENS - 6 - LANG_OVERHEAD if FIM_MODE
+                   else BLOCK_SIZE - 3 - LANG_OVERHEAD)
+        attempts = 0
+        while len(fim_eval_set) < n and attempts < 6:
+            attempts += 1
+            try:
+                fresh = get_next_samples(n - len(fim_eval_set) + 8)
+            except RuntimeError:
+                break
+            if not fresh:
+                break
+            for cat, tokens in fresh:
+                if len(fim_eval_set) >= n:
+                    break
+                if cat not in CODE_CATEGORY_IDS or len(tokens) < 200:
+                    continue
+                tokens = tokens[:fim_cap]
+                L = len(tokens)
+                pre_end = max(32, L // 2)
+                mid_end = pre_end + max(16, min(L // 4, L - pre_end - 1))
+                if mid_end >= L:
+                    continue
+                if FIM_MODE:
+                    query = _fim_query(tokens, pre_end, mid_end)
+                    record = search_rag(query) if query else None
+                    context = _make_context(tokens, record, BLOCK_SIZE)
+                else:
+                    context = None
+                fim_eval_set.append((cat, tokens, pre_end, mid_end, context))
+        print(f"Cached FIM eval set: {len(fim_eval_set)} samples (fixed for this run)")
+
+    @torch.no_grad()
+    def run_fim_eval(step: int):
+        """FIM loss/ppl on the fixed eval set (context + lang tags masked out)."""
+        if not fim_eval_set:
+            return
+        model.eval()
+        total_loss = 0.0
+        total_tokens = 0
+        step_chunk = min(4, len(fim_eval_set))  # bound logits memory at 8192
+        for s0 in range(0, len(fim_eval_set), step_chunk):
+            batch = fim_eval_set[s0:s0 + step_chunk]
+            prepared = []
+            for cat, tokens, pre_end, mid_end, context in batch:
+                seq = torch.tensor(tokens, dtype=torch.long)
+                vseq, vmt = _fim_variant(seq, pre_end, mid_end, context,
+                                         CAT_NAME_BY_ID.get(cat))
+                prepared.append((vseq, vmt))
+            n_max = max(len(s) - 1 for s, _ in prepared)
+            x = torch.zeros((len(prepared), n_max), dtype=torch.long, device=DEVICE)
+            y = torch.full((len(prepared), n_max), -100, dtype=torch.long, device=DEVICE)
+            for i, (seq, mt) in enumerate(prepared):
+                n = min(len(seq) - 1, n_max)
+                x[i, :n] = seq[:n]
+                y[i, :n] = torch.where(mt[:n], seq[1:n + 1],
+                                       torch.full_like(seq[1:n + 1], -100))
+            with torch.autocast(device_type="cuda", dtype=AUTOCAST_DTYPE, enabled=(DEVICE == "cuda")):
+                hidden = model(x, return_hidden=True)
+                hidden = hidden.to(MODEL_DTYPE)
+                losses = []
+                for c in range(0, hidden.shape[1], LOSS_CHUNK):
+                    logits_c = model.lm_head(hidden[:, c:c + LOSS_CHUNK])
+                    losses.append(F.cross_entropy(
+                        logits_c.reshape(-1, logits_c.size(-1)),
+                        y[:, c:c + LOSS_CHUNK].reshape(-1),
+                        reduction="sum"))
+                loss = sum(losses)
+            total_loss += loss.item()
+            total_tokens += int((y != -100).sum().item())
+            del hidden, loss, x, y
+        model.train()
+        val = total_loss / max(total_tokens, 1)
+        print(f"  fim eval @ step {step}: loss {val:.4f} | ppl {math.exp(min(val, 20)):.1f}")
+        wandb.log({"eval_fim_loss": val, "eval_fim_ppl": math.exp(min(val, 20))}, step=step)
+
+    @torch.no_grad()
+    def run_fim_gen_eval(step: int):
+        """Greedy FIM generation vs reference middle: prefix-match accuracy + exact-match."""
+        if not fim_eval_set or DEVICE == "cpu":
+            return
+        model.eval()
+        accs = 0.0
+        exacts = 0
+        count = 0
+        for cat, tokens, pre_end, mid_end, context in fim_eval_set[:FIM_EVAL_GEN_SAMPLES]:
+            seq = torch.tensor(tokens, dtype=torch.long)
+            vseq, _ = _fim_variant(seq, pre_end, mid_end, context, CAT_NAME_BY_ID.get(cat))
+            mid_idx = int((vseq == FIM_MID).nonzero()[0].item())
+            prompt = vseq[:mid_idx + 1].unsqueeze(0).to(DEVICE)
+            ref = vseq[mid_idx + 1:-1].tolist()  # middle (without <fim_end>)
+            gen = model.generate(prompt, max_new_tokens=FIM_EVAL_GEN_TOKENS,
+                                 temperature=0.0,
+                                 stop_tokens={FIM_END, CONTEXT_END, IM_END})
+            gen_ids = gen[0, prompt.shape[1]:].tolist()
+            k = min(len(gen_ids), len(ref), FIM_EVAL_GEN_TOKENS)
+            if k > 0:
+                pref = 0
+                for j in range(k):
+                    if gen_ids[j] == ref[j]:
+                        pref += 1
+                    else:
+                        break
+                accs += pref / k
+                if gen_ids[:k] == ref[:k]:
+                    exacts += 1
+                count += 1
+        model.train()
+        if count:
+            print(f"  fim gen eval @ step {step}: prefix_acc {accs / count:.3f} | "
+                  f"exact@{FIM_EVAL_GEN_TOKENS} {exacts / count:.2f}")
+            wandb.log({"eval_fim_gen_prefix_acc": accs / count,
+                       "eval_fim_gen_exact": exacts / count}, step=step)
+
     build_eval_set()
+    build_fim_eval_set()
     torch.cuda.empty_cache()
+
+    first_eval_done = False
 
     for step in range(start_step, MAX_STEPS):
         if UPSCALED and step - start_step == WAKEUP_STEPS:
@@ -1064,6 +1286,17 @@ if __name__ == "__main__":
                 if nt > 0:
                     cat_metrics[f"loss/{key}"] = wl / nt
                 cat_metrics[f"tokens/{key}"] = nt
+            stats = _drain_stats()
+            if stats["fim_eligible"] > 0:
+                wandb.log({
+                    "fim/trunc_rate": stats["fim_trunc"] / stats["fim_eligible"],
+                    "fim/len_lt1k": stats["hist_1k"], "fim/len_1_2k": stats["hist_2k"],
+                    "fim/len_2_4k": stats["hist_4k"], "fim/len_ge4k": stats["hist_8k"],
+                    "rag/query_count": stats["rag_q"],
+                    "rag/miss_rate": stats["rag_miss"] / max(1, stats["rag_q"]),
+                    "rag/context_len": stats["ctx_len"] / max(1, stats["ctx_n"]),
+                    "rag/context_clip_rate": stats["ctx_clip"] / max(1, stats["ctx_n"]),
+                }, step=step)
             print(f"step {step:6d} | loss {cur_loss:.4f} | ppl {cur_ppl:.1f} | "
                   f"acc {cur_acc:.3f} | lr {lr:.2e} | "
                   f"grad_norm {cur_grad:.2f} | {tok_per_sec:.0f} tok/s | "
@@ -1107,6 +1340,9 @@ if __name__ == "__main__":
                         os.remove(os.path.join(CKPT_DIR, f))
                         print(f"removed superseded normal checkpoint: {f}")
 
-        if step > 0 and step % EVAL_EVERY == 0:
+        if step > 0 and (step % EVAL_EVERY == 0 or (not first_eval_done and step >= start_step + EVAL_FIRST_AFTER)):
             run_eval(step)
+            run_fim_eval(step)
+            run_fim_gen_eval(step)
+            first_eval_done = True
             torch.cuda.empty_cache()

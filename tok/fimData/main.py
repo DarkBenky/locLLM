@@ -160,7 +160,7 @@ if __name__ == "__main__":
     index = None
     if DEDUP_SEMANTIC:
         try:
-            dim = MODEL.get_sentence_embedding_dimension()
+            dim = MODEL.get_embedding_dimension()
             index = DedupIndex(
                 db.conn, dim=dim, threshold=DEDUP_COS_THRESHOLD, device=gpu_index
             )
