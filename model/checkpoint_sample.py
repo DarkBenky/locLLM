@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+import sys
 import unicodedata
 
 import torch
@@ -11,6 +13,23 @@ SAMPLE_PROMPT_LINES = 6
 SAMPLE_GEN_TOKENS = 128
 SAMPLE_TEMP = 0.8
 TERM_WIDTH = 80
+
+# --- terminal colors (ANSI; only when stdout is a tty) ---
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
+ANSI = {"ctx": "\033[90m", "prefix": "\033[32m", "gen": "\033[1;33m",
+        "suffix": "\033[34m", "head": "\033[1;36m"}
+USE_COLOR = sys.stdout.isatty()
+
+
+def _color(code: str, text: str) -> str:
+    if not USE_COLOR or not text:
+        return text
+    return f"{ANSI[code]}{text}\033[0m"
+
+
+def _strip_ansi(s: str) -> str:
+    return _ANSI_RE.sub("", s)
+
 
 LAST_RAW_TOKENS = None
 LAST_FIM_TOKENS = None
@@ -30,20 +49,35 @@ def record_fim_sample(tokens, mid):
 
 
 def _disp_width(s: str) -> int:
-    return sum(2 if unicodedata.east_asian_width(c) in "WF" else 1 for c in s)
+    return sum(2 if unicodedata.east_asian_width(c) in "WF" else 1 for c in _strip_ansi(s))
 
 
 def _wrap(text: str, width: int = TERM_WIDTH) -> list[str]:
+    """Wrap text to `width` visible columns, treating ANSI escapes as zero-width."""
     out = []
     for line in text.split("\n"):
         line = line.rstrip()
         cur = ""
-        for ch in line:
-            if _disp_width(cur + ch) > width:
+        cur_w = 0
+        i = 0
+        while i < len(line):
+            if line[i] == "\x1b":
+                j = line.find("m", i)
+                if j == -1:
+                    cur += line[i:]
+                    break
+                cur += line[i:j + 1]
+                i = j + 1
+                continue
+            ch = line[i]
+            w = 2 if unicodedata.east_asian_width(ch) in "WF" else 1
+            if cur_w + w > width and cur_w > 0:
                 out.append(cur)
-                cur = ch
-            else:
-                cur += ch
+                cur = ""
+                cur_w = 0
+            cur += ch
+            cur_w += w
+            i += 1
         out.append(cur)
     return out
 
@@ -59,16 +93,19 @@ def _fmt_checkpoint_sample(step: int, prompt_text: str, gen_text: str) -> list[s
 
 
 def _fmt_fim_sample(step: int, context_text, prefix_text: str, suffix_text: str,
-                    gen_text: str) -> list[str]:
+                    gen_text: str, final_text: str | None = None) -> list[str]:
     block = [f"===== step {step} | FIM checkpoint sample ====="]
-    block.append("-- context --")
-    block.extend(_wrap(context_text) if context_text else ["(none)"])
-    block.append("-- <fim_prefix> --")
-    block.extend(_wrap(prefix_text))
-    block.append("-- <fim_suffix> --")
-    block.extend(_wrap(suffix_text))
-    block.append("-- <fim_middle> | model output --")
-    block.extend(_wrap(gen_text))
+    block.append(_color("head", "-- context --"))
+    block.extend(_wrap(_color("ctx", context_text)) if context_text else ["(none)"])
+    block.append(_color("head", "-- <fim_prefix> --"))
+    block.extend(_wrap(_color("prefix", prefix_text)))
+    block.append(_color("head", "-- <fim_suffix> --"))
+    block.extend(_wrap(_color("suffix", suffix_text)))
+    block.append(_color("head", "-- <fim_middle> | model output --"))
+    block.extend(_wrap(_color("gen", gen_text)))
+    if final_text:
+        block.append(_color("head", "-- final code (prefix + generated + suffix) --"))
+        block.extend(_wrap(final_text))
     block.append("=" * (TERM_WIDTH - 4))
     return block
 
@@ -95,10 +132,12 @@ def run_fim_checkpoint_sample(step: int, model, sp, block_size: int, device: str
         context_text = None
         if cs >= 0 and ce > cs:
             context_text = chatml.safe_decode(toks[cs + 1:ce], sp, chatml.reserved_ids(base), extra=extra)
-        prefix_text = chatml.safe_decode(toks[pi + 1:si], sp, chatml.reserved_ids(base), extra=extra)
+        prefix_full = chatml.safe_decode(toks[pi + 1:si], sp, chatml.reserved_ids(base), extra=extra)
+        suffix_full = chatml.safe_decode(toks[si + 1:mid], sp, chatml.reserved_ids(base), extra=extra)
+        prefix_text = prefix_full
         if len(prefix_text) > 600:
             prefix_text = "[...] " + prefix_text[-600:]
-        suffix_text = chatml.safe_decode(toks[si + 1:mid], sp, chatml.reserved_ids(base), extra=extra)
+        suffix_text = suffix_full
         if len(suffix_text) > 600:
             suffix_text = suffix_text[:600] + " [...]"
 
@@ -117,11 +156,20 @@ def run_fim_checkpoint_sample(step: int, model, sp, block_size: int, device: str
                 gen_ids, sp, chatml.reserved_ids(base), extra=extra)
         else:
             gen_text = "<|fim_end|>"
-        block = _fmt_fim_sample(step, context_text, prefix_text, suffix_text, gen_text)
+        # final-code view: generated text inline between prefix and suffix
+        pfx = prefix_full
+        sfx = suffix_full
+        if len(pfx) > 1500:
+            pfx = "[...]\n" + pfx[-1500:]
+        if len(sfx) > 1500:
+            sfx = sfx[:1500] + "\n[...]"
+        final_text = (_color("prefix", pfx) + _color("gen", gen_text)
+                      + _color("suffix", sfx))
+        block = _fmt_fim_sample(step, context_text, prefix_text, suffix_text, gen_text, final_text)
         for line in block:
             print(line)
         print()
-        sample_table.add_data(step, "\n".join(block))
+        sample_table.add_data(step, "\n".join(_strip_ansi(l) for l in block))
         wandb.log({"checkpoint_samples": sample_table}, step=step)
     except Exception as e:
         print(f"WARNING: FIM checkpoint sample generation failed: {e}")
