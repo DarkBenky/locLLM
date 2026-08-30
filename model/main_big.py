@@ -70,6 +70,11 @@ FIM_RATIO = 0.95
 FIM_VARIANTS = 1  # FIM samples generated per code sample
 FIM_MAX_SAMPLE_TOKENS = 0  # 0 = no cap (full window); e.g. 2048 trades quality for ~1.8x speed
 NO_CONTEXT_PROB = 0.3  # Phase C: drop RAG context for this fraction of FIM samples (robustness)
+# SAFIM-style short-span emphasis: benchmark completions are mostly one-liners
+# (e.g. api calls, control-flow expressions), not long chunks. Keep ~60% of FIM
+# middles at line level and only ~13% up to the full window budget.
+SHORT_MID_CUM = 0.60    # cumulative prob for line-level spans (<= ~128 tok)
+MEDIUM_MID_CUM = 0.87   # cumulative prob for short/medium spans (16..160 tok)
 ROPE_BASE = 10000.0  # test e.g. 100000 for longer extrapolation at 8192
 LOSS_CHUNK = 1024  # sequence-chunk size for head+loss (bounds logits memory)
 
@@ -488,15 +493,16 @@ def _fetch_samples_with_retry(count: int) -> list[tuple[int, list[int]]]:
 
 
 def _sample_mid_len(mid_max: int) -> int:
-    """Middle-span mixture biased toward line-level completions (real autocomplete):
-    ~50% 1-few lines, ~30% medium (function bodies), ~20% up to the window budget."""
+    """Middle-span mixture biased toward short, line-level completions:
+    ~60% 1-few lines (<=128 tok, incl. tiny 2-3 token expressions),
+    ~27% short-medium (16-160 tok), ~13% up to the window budget."""
     if mid_max <= 1:
         return 1
     r = random.random()
-    if r < 0.5:
-        return min(mid_max, random.choice((4, 8, 12, 16, 24, 32, 48, 64, 96, 128)))
-    if r < 0.8:
-        return random.randint(min(32, mid_max), min(256, mid_max))
+    if r < SHORT_MID_CUM:
+        return min(mid_max, random.choice((2, 3, 4, 8, 12, 16, 24, 32, 48, 64, 96, 128)))
+    if r < MEDIUM_MID_CUM:
+        return random.randint(min(16, mid_max), min(160, mid_max))
     return random.randint(min(64, mid_max), mid_max)
 
 

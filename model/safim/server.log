@@ -1,0 +1,36 @@
+
+=== server start 2026-08-30 18:14:17 cwd=/home/user/Desktop/locLLM/model ===
+W0830 18:14:38.807000 343101 site-packages/torch/utils/cpp_extension.py:178] [0/0] No CUDA runtime is found, using CUDA_HOME='/usr/local/cuda-12.0'
+INFO:     Started server process [343101]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+INFO:     127.0.0.1:59792 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59804 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59804 - "POST /generate_fim HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46662 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46664 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51350 - "POST /health HTTP/1.1" 405 Method Not Allowed
+INFO:     127.0.0.1:50664 - "GET /health HTTP/1.1" 200 OK
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [343101]
+/home/user/miniconda3/lib/python3.14/multiprocessing/resource_tracker.py:475: UserWarning: resource_tracker: There appear to be 1 leaked semaphore objects to clean up at shutdown: {'/mp-wov0oylq'}
+  warnings.warn(
+
+=== server start 2026-08-30 18:24:03 cwd=/home/user/Desktop/locLLM/model ===
+W0830 18:24:23.275000 348776 site-packages/torch/utils/cpp_extension.py:178] [0/0] No CUDA runtime is found, using CUDA_HOME='/usr/local/cuda-12.0'
+INFO:     Started server process [348776]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+INFO:     127.0.0.1:52942 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52954 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52954 - "POST /generate_fim HTTP/1.1" 200 OK
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [348776]
+/home/user/miniconda3/lib/python3.14/multiprocessing/resource_tracker.py:475: UserWarning: resource_tracker: There appear to be 1 leaked semaphore objects to clean up at shutdown: {'/mp-kp5yzzjj'}
+  warnings.warn(
