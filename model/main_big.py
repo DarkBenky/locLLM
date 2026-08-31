@@ -68,9 +68,9 @@ GRAD_CLIP = 1.0
 CHATML_MASK_PROB = 0.8
 FIM_RATIO = 0.95
 FIM_VARIANTS = 1  # FIM samples generated per code sample
-FIM_MAX_SAMPLE_TOKENS = 1536  # cap sample window (was 0 = up to 8192): shorter FIM
-                              # windows -> ~4-5x less compute per batch and match
-                              # the short, line-level completion mix
+FIM_MAX_SAMPLE_TOKENS = 0  # 0 = FULL window (up to BLOCK_SIZE=8192) per sample:
+                           # maximum context for every sample / matches 8K.
+                           # Set e.g. 1536/4096 to cap windows and go faster.
 NO_CONTEXT_PROB = 0.5  # RAG-only knob: 50/50 with/without context when LOCLLM_RAG_TRAIN=1, unused in plain FIM mode
 # SAFIM-style short-span emphasis: benchmark completions are mostly one-liners
 # (e.g. api calls, control-flow expressions), not long chunks. ~75% of FIM
@@ -678,6 +678,11 @@ def _plan_fim(tokens: list, cat_id: int, block_size: int):
             splits = _fim_splits(tokens, 1)
         if not splits:
             do_fim = False
+    elif FIM_MODE and FIM_MAX_SAMPLE_TOKENS > 0:
+        # Non-FIM (plain LM / non-code) samples: cap them too. Without this,
+        # a single 8k-token sample in a batch pads every row to BLOCK_SIZE,
+        # ~10GB+ of extra activations even at small batch sizes (the OOM).
+        tokens = tokens[:FIM_MAX_SAMPLE_TOKENS]
     return tokens, splits if do_fim else [], use_ctx
 
 

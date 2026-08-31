@@ -1,38 +1,35 @@
-# locLLM model — Python dependencies
-# Verified working set for the 1.6B FIM training + inference + SAFIM eval stack.
+# locLLM model — Python dependencies (unpinned: installs latest compatible).
 #
-# Install:
+# CUDA machines: install a matching torch wheel FIRST, e.g.
+#   nvidia-smi                    # e.g. "CUDA Version: 12.1" -> cu121
+#   pip install torch --index-url https://download.pytorch.org/whl/cu121
+# then:
 #   pip install -r requirements.txt
 #
-# If you have a CUDA GPU (RTX 3060/3090), install the matching torch build first:
-#   pip install torch==2.13.0+cu130 --index-url https://download.pytorch.org/whl/cu130
-#   (then the `torch` line below is already satisfied)
-#
-# System packages NOT covered by pip (needed only for SAFIM execution scoring):
-#   openjdk (Java), mono (C#), g++ (C++), python3 (already there)
+# System packages NOT covered by pip (only for SAFIM execution scoring):
+#   openjdk (Java), mono (C#), g++ (C++)
 
-# ---- Core (training + inference) ------------------------------------------
---extra-index-url https://download.pytorch.org/whl/cu130
-torch==2.13.0+cu130
-sentencepiece==0.2.2
+# Core (training + inference)
+torch
+sentencepiece
 
-# ---- Inference API (model/infrance.py) ------------------------------------
-fastapi==0.141.1
-uvicorn==0.52.4
-pydantic==2.13.4
-requests==2.34.2
+# Inference API (model/infrance.py)
+fastapi
+uvicorn
+pydantic
+requests
 
-# ---- Training launcher (model/main_big.py) --------------------------------
-questionary==2.1.1
-wandb==0.28.2
+# Training launcher (model/main_big.py)
+questionary
+wandb
 
-# ---- SAFIM evaluation (model/eval.py, safim_helpers.py) -------------------
-datasets==5.0.1
-httpx==0.28.1
-tqdm==4.68.2
-tree-sitter==0.26.0
-tree-sitter-language-pack==1.14.3
+# SAFIM evaluation (model/eval.py, safim_helpers.py)
+datasets
+httpx
+tqdm
+tree-sitter
+tree-sitter-language-pack
 
-# ---- Optional -------------------------------------------------------------
-# 8-bit AdamW optimizer (choice at the training prompt). Frees ~6-7GB VRAM:
+# Optional (uncomment for 8-bit AdamW optimizer):
 # bitsandbytes
+
