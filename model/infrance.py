@@ -504,4 +504,6 @@ def health():
 
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    # LOCLLM_PORT overrides the default port (e.g. 8080 for a remote tunnel)
+    uvicorn.run(app, host="0.0.0.0",
+                port=int(os.environ.get("LOCLLM_PORT", "8000")))

@@ -68,15 +68,18 @@ GRAD_CLIP = 1.0
 CHATML_MASK_PROB = 0.8
 FIM_RATIO = 0.95
 FIM_VARIANTS = 1  # FIM samples generated per code sample
-FIM_MAX_SAMPLE_TOKENS = 0  # 0 = no cap (full window); e.g. 2048 trades quality for ~1.8x speed
-NO_CONTEXT_PROB = 0.5  # 50/50: half of FIM samples get RAG context, half train without it
+FIM_MAX_SAMPLE_TOKENS = 1536  # cap sample window (was 0 = up to 8192): shorter FIM
+                              # windows -> ~4-5x less compute per batch and match
+                              # the short, line-level completion mix
+NO_CONTEXT_PROB = 0.5  # RAG-only knob: 50/50 with/without context when LOCLLM_RAG_TRAIN=1, unused in plain FIM mode
 # SAFIM-style short-span emphasis: benchmark completions are mostly one-liners
-# (e.g. api calls, control-flow expressions), not long chunks. Keep ~60% of FIM
-# middles at line level and only ~13% up to the full window budget.
-SHORT_MID_CUM = 0.60    # cumulative prob for line-level spans (<= ~128 tok)
-MEDIUM_MID_CUM = 0.87   # cumulative prob for short/medium spans (16..160 tok)
+# (e.g. api calls, control-flow expressions), not long chunks. ~75% of FIM
+# middles are line-level and only ~5% up to the full window budget.
+SHORT_MID_CUM = 0.75    # cumulative prob for line-level spans (<= ~128 tok)
+MEDIUM_MID_CUM = 0.95   # cumulative prob for short/medium spans (16..160 tok)
 ROPE_BASE = 10000.0  # test e.g. 100000 for longer extrapolation at 8192
-LOSS_CHUNK = 1024  # sequence-chunk size for head+loss (bounds logits memory)
+LOSS_CHUNK = 1024  # sequence-chunk size for head+loss (bounds logits memory;
+                    # 1024 keeps peak logits ~0.4GB at B=8; 2048 is faster but +~0.4GB)
 
 LOG_EVERY = 10
 CKPT_EVERY = 75
@@ -147,6 +150,9 @@ def _select_gpu_interactive():
 
 
 FIM_MODE = False
+# RAG conditioning is OFF in FIM training. Opt in only for a separate
+# RAG-context experiment: LOCLLM_RAG_TRAIN=1 python main_big.py
+RAG_TRAIN_MODE = os.environ.get("LOCLLM_RAG_TRAIN") == "1"
 
 def _select_fim_mode_enable():
     global FIM_MODE
@@ -337,6 +343,9 @@ def _search_texts(texts: list) -> list:
 
 
 def search_rag_batch(queries: list) -> list:
+    # FIM training NEVER queries RAG unless explicitly enabled (LOCLLM_RAG_TRAIN=1).
+    if not RAG_TRAIN_MODE:
+        return [None] * len(queries)
     if len(_rag_cache) > RAG_CACHE_MAX:
         _rag_cache.clear()
     out = [None] * len(queries)
@@ -435,8 +444,8 @@ CAT_NAME_BY_ID: dict[int, str] = {}
 
 MAX_CACHE_SIZE = 1024
 
-FETCH_BULK = 256
-POOL_MIN = 64
+FETCH_BULK = 512
+POOL_MIN = 128
 BATCH_QUEUE_MAX = 4
 
 _sample_pool: list[tuple[int, list[int]]] = []
@@ -494,8 +503,8 @@ def _fetch_samples_with_retry(count: int) -> list[tuple[int, list[int]]]:
 
 def _sample_mid_len(mid_max: int) -> int:
     """Middle-span mixture biased toward short, line-level completions:
-    ~60% 1-few lines (<=128 tok, incl. tiny 2-3 token expressions),
-    ~27% short-medium (16-160 tok), ~13% up to the window budget."""
+    ~75% 1-few lines (<=128 tok, incl. tiny 2-3 token expressions),
+    ~20% short-medium (16-160 tok), ~5% up to the window budget."""
     if mid_max <= 1:
         return 1
     r = random.random()
@@ -632,9 +641,9 @@ def _plan_fim(tokens: list, cat_id: int, block_size: int):
     do_fim = is_code and random.random() < FIM_RATIO and len(tokens) >= MIN_SAMPLE_TOKENS
     use_ctx = False
     if do_fim:
-        # Decide context usage first so the code window gets the full budget
-        # when retrieval is skipped (no-context samples don't need the 1024 reserve).
-        use_ctx = FIM_MODE and not _flip_no_context()
+        # RAG context is NOT part of FIM training by default. Enable it only
+        # for a separate experiment: LOCLLM_RAG_TRAIN=1 (pairs with RAG server).
+        use_ctx = FIM_MODE and RAG_TRAIN_MODE and not _flip_no_context()
         _stat("fim_eligible")
         n0 = len(tokens)
         if n0 < 1024:
@@ -764,7 +773,7 @@ def _build_batch_from_pool(batch_size: int, block_size: int):
         plans.append((pt, cat, splits, use_ctx))
     pending = []
     queried = []
-    if FIM_MODE:
+    if FIM_MODE and RAG_TRAIN_MODE:
         for i, (pt, cat, splits, use_ctx) in enumerate(plans):
             for s in splits:
                 if not use_ctx:
@@ -854,8 +863,12 @@ if __name__ == "__main__":
                      "optimizer": "fp32"}]
 
     gpu = selected[0]
-    BATCH_SIZE = int(gpu["batch_size"])
-    GRAD_ACCUM = int(gpu["accumulation_steps"])
+    # Env overrides for speed tuning without touching the GPU selector:
+    #   LOCLLM_BATCH_SIZE=8 LOCLLM_GRAD_ACCUM=6 python main_big.py
+    BATCH_SIZE = int(os.environ.get("LOCLLM_BATCH_SIZE", gpu["batch_size"]))
+    GRAD_ACCUM = int(os.environ.get("LOCLLM_GRAD_ACCUM", gpu["accumulation_steps"]))
+    if "LOCLLM_BATCH_SIZE" in os.environ or "LOCLLM_GRAD_ACCUM" in os.environ:
+        print(f"NOTE: env overrides active -> batch_size={BATCH_SIZE} accum={GRAD_ACCUM}")
     OPTIMIZER = gpu.get("optimizer", "fp32")
     print(f"\nTraining on: {gpu['name']} ({gpu.get('vram_size', 0):.1f} GB) | "
           f"batch_size={BATCH_SIZE} | accum={GRAD_ACCUM} | optimizer={OPTIMIZER} | "
@@ -917,6 +930,12 @@ if __name__ == "__main__":
              {"params": no_decay, "weight_decay": 0.0}],
             lr=MAX_LR, betas=(0.9, 0.95),
         )
+
+    if DEVICE == "cuda":
+        torch.cuda.empty_cache()
+        print(f"VRAM after model+optimizer: "
+              f"{torch.cuda.memory_allocated() / 1e9:.2f} GB "
+              f"(reserved {torch.cuda.memory_reserved() / 1e9:.2f} GB)", flush=True)
 
     start_step = 0
     os.makedirs(CKPT_DIR, exist_ok=True)
@@ -1014,6 +1033,10 @@ if __name__ == "__main__":
             return 0.0, 0.0, 0.0, 0, {}
         with torch.autocast(device_type="cuda", dtype=AUTOCAST_DTYPE, enabled=(DEVICE == "cuda")):
             hidden = model(x, return_hidden=True)  # (B, T, DIM) — ~33 MB at T=4096, ~66 MB at T=8192
+            if os.environ.get("LOCLLM_DEBUG_MEM") == "1":
+                print(f"  [mem] B={x.shape[0]} T={x.shape[1]} "
+                      f"alloc={torch.cuda.memory_allocated() / 1e9:.2f} GB "
+                      f"reserved={torch.cuda.memory_reserved() / 1e9:.2f} GB", flush=True)
             hidden = hidden.to(MODEL_DTYPE)        # final_norm promotes to fp32 under autocast; normalize
             seq_len = hidden.shape[1]
 
@@ -1046,16 +1069,17 @@ if __name__ == "__main__":
             n_tok = mask.sum().item()
             correct = 0
             per_row = torch.zeros_like(y, dtype=torch.float32)
-            for s in range(0, seq_len, LOSS_CHUNK):
-                e = min(s + LOSS_CHUNK, seq_len)
-                logits_c = model.lm_head(hidden[:, s:e])
-                yc = y[:, s:e]
-                mc = mask[:, s:e]
-                correct += (logits_c.argmax(dim=-1)[mc] == yc[mc]).sum().item()
-                pr = F.cross_entropy(
-                    logits_c.view(-1, logits_c.size(-1)), yc.reshape(-1), reduction="none",
-                ).view_as(yc)
-                per_row[:, s:e] = pr
+            # Metrics from the first chunk only: saves a redundant full lm_head pass
+            s = 0
+            e = min(LOSS_CHUNK, seq_len)
+            logits_c = model.lm_head(hidden[:, s:e])
+            yc = y[:, s:e]
+            mc = mask[:, s:e]
+            correct += (logits_c.argmax(dim=-1)[mc] == yc[mc]).sum().item()
+            pr = F.cross_entropy(
+                logits_c.view(-1, logits_c.size(-1)), yc.reshape(-1), reduction="none",
+            ).view_as(yc)
+            per_row[:, s:e] = pr
             acc = correct / max(n_tok, 1)
             row_real = mask.sum(dim=-1).float()
             row_counts = row_real.clamp(min=1)

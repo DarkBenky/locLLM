@@ -10,3 +10,28 @@ INFO:     127.0.0.1:38212 - "POST /v1/completions HTTP/1.1" 200 OK
 INFO:     127.0.0.1:38224 - "POST /v1/completions HTTP/1.1" 200 OK
 INFO:     127.0.0.1:58228 - "POST /v1/completions HTTP/1.1" 200 OK
 INFO:     127.0.0.1:57652 - "POST /v1/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51110 - "POST /v1/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51126 - "POST /v1/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51128 - "POST /v1/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59870 - "POST /v1/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59872 - "POST /v1/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59880 - "POST /v1/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59892 - "POST /v1/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59904 - "POST /v1/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59906 - "POST /v1/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59912 - "POST /v1/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59914 - "POST /v1/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59924 - "POST /v1/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59932 - "POST /v1/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59944 - "POST /v1/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43024 - "POST /v1/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43036 - "POST /v1/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43042 - "POST /v1/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43052 - "POST /v1/completions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43054 - "POST /v1/completions HTTP/1.1" 200 OK
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [664991]
+/home/user/miniconda3/lib/python3.14/multiprocessing/resource_tracker.py:475: UserWarning: resource_tracker: There appear to be 1 leaked semaphore objects to clean up at shutdown: {'/mp-3p5ul3ib'}
+  warnings.warn(
