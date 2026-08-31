@@ -1,5 +1,5 @@
 {
-    "step": 6251264,
+    "step": 6251500,
     "csharp": 507000,
     "csharp_char_count": 466796011,
     "go": 247489,
@@ -105,8 +105,8 @@
                 "shard_example_idx": 8178,
                 "type": "ArrowExamplesIterable"
             },
-            "batch_idx": 288734,
-            "num_chunks_since_previous_state": 5504,
+            "batch_idx": 288754,
+            "num_chunks_since_previous_state": 5524,
             "cropped_chunk_length": 0,
             "type": "RebatchedArrowExamplesIterable"
         },
@@ -167,5 +167,21 @@
     "julia_dup_sem": 4,
     "crystal_dup_norm": 1,
     "haxe_dup_sem": 1,
-    "odin_dup_norm": 4
+    "odin_dup_norm": 4,
+    "JavaScript": 74,
+    "JavaScript_char_count": 37231,
+    "TypeScript": 29,
+    "TypeScript_char_count": 5586,
+    "Java": 6,
+    "Java_char_count": 10721,
+    "Erlang": 11,
+    "Erlang_char_count": 4435,
+    "Python": 49,
+    "Python_char_count": 82612,
+    "PHP": 5,
+    "PHP_char_count": 6326,
+    "Shell": 1,
+    "Shell_char_count": 383,
+    "TSX": 61,
+    "TSX_char_count": 85739
 }

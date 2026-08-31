@@ -1,3 +1,7 @@
+import json
+import os
+import urllib.request
+
 from datasets import load_dataset
 
 from parseCode import LANG_PATTERNS, SampleUnparsed, parseCodeSample
@@ -104,8 +108,62 @@ def stack_v3_fim_gen(supported_langs=None, resume_state=None):
             continue
 
 
+CHECKPOINT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "checkpoint.json")
+DATASET_URL = "http://91.98.145.193:8823/api/receive-data"
+SAVE_EVERY = 500
+
+
+def _load_checkpoint():
+    if os.path.exists(CHECKPOINT_PATH):
+        with open(CHECKPOINT_PATH) as f:
+            return json.load(f)
+    return {"step": 0}
+
+
+def _save_checkpoint(cp):
+    with open(CHECKPOINT_PATH, "w") as f:
+        json.dump(cp, f, indent=4)
+
+
+def _post_sample(text: str, category: str):
+    payload = json.dumps({"text": text, "category": category}).encode()
+    req = urllib.request.Request(
+        DATASET_URL,
+        data=payload,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        return json.loads(resp.read().decode())
+
+
 if __name__ == "__main__":
-    for i, sample in enumerate(stack_v3_fim_gen()):
-        print(f"{sample['category']:12s} {sample['lang']:10s} {sample['hash'][:8]} {len(sample['text'])}")
-        if i >= 10:
-            break
+    cp = _load_checkpoint()
+    resume_state = cp.get("resume_state")
+    gen = stack_v3_fim_gen(resume_state=resume_state)
+    if resume_state is None or resume_failed():
+        print("no valid resume state — starting from the beginning of the dataset")
+    step = int(cp.get("step", 0))
+    for i, sample in enumerate(gen):
+        try:
+            _post_sample(sample["text"], sample["category"])
+        except Exception as e:
+            print(f"WARNING: post failed for sample {step}: {e} — skipping")
+            continue
+        step += 1
+        cp["step"] = step
+        cp[sample["category"]] = cp.get(sample["category"], 0) + 1
+        cp[sample["category"] + "_char_count"] = (
+            cp.get(sample["category"] + "_char_count", 0) + len(sample["text"])
+        )
+        if step % SAVE_EVERY == 0:
+            st = get_resume_state()
+            if st is not None:
+                cp["resume_state"] = st
+            _save_checkpoint(cp)
+            print(f"ingested {step} samples...")
+    st = get_resume_state()
+    if st is not None:
+        cp["resume_state"] = st
+    _save_checkpoint(cp)
+    print(f"done: ingested {step} samples total")
