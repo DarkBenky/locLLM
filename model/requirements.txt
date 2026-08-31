@@ -21,7 +21,9 @@ requests
 
 # Training launcher (model/main_big.py)
 questionary
-wandb
+# wandb>=0.22 has no py3-none-any wheel (installs from source -> needs Go).
+# 0.21.0 is the last version with a pure-python wheel (works on py3.8+):
+wandb==0.21.0
 
 # SAFIM evaluation (model/eval.py, safim_helpers.py)
 datasets

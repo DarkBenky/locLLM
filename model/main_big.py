@@ -1165,9 +1165,12 @@ if __name__ == "__main__":
         wandb.log({"eval_loss": val, "eval_ppl": math.exp(min(val, 20))}, step=step)
 
     def build_fim_eval_set(n: int = FIM_EVAL_SAMPLES):
-        """Deterministic FIM eval set: fixed split + RAG context, built once per run."""
+        """Deterministic FIM eval set: fixed split + optional RAG context, built once per run."""
         fim_eval_set.clear()
-        fim_cap = (BLOCK_SIZE - CONTEXT_MAX_TOKENS - 6 - LANG_OVERHEAD if FIM_MODE
+        # Reserve context room ONLY when RAG is actually enabled; otherwise the
+        # FIM eval samples use the FULL window like training does.
+        fim_cap = (BLOCK_SIZE - CONTEXT_MAX_TOKENS - 6 - LANG_OVERHEAD
+                   if (FIM_MODE and RAG_TRAIN_MODE)
                    else BLOCK_SIZE - 3 - LANG_OVERHEAD)
         attempts = 0
         while len(fim_eval_set) < n and attempts < 6:
@@ -1189,7 +1192,7 @@ if __name__ == "__main__":
                 mid_end = _snap_newline(tokens, pre_end + max(16, min(L // 4, L - pre_end - 1)))
                 if mid_end <= pre_end or mid_end >= L:
                     continue
-                if FIM_MODE:
+                if FIM_MODE and RAG_TRAIN_MODE:
                     query = _fim_query(tokens, pre_end, mid_end)
                     record = search_rag(query) if query else None
                     context = _make_context(tokens, record, BLOCK_SIZE)
