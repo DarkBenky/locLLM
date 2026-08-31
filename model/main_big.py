@@ -125,6 +125,19 @@ CKPT_PREFIX = "step_big_"
 
 
 def _select_gpu_interactive():
+    # Server/headless-friendly: bypass the interactive selector entirely.
+    #   LOCLLM_GPU=<cuda-index> LOCLLM_BATCH_SIZE=3 LOCLLM_GRAD_ACCUM=10 \
+    #   LOCLLM_OPTIMIZER=8bit python main_big.py
+    if "LOCLLM_GPU" in os.environ:
+        gpu_idx = int(os.environ["LOCLLM_GPU"])
+        return [{
+            "name": os.environ.get("LOCLLM_GPU_NAME", f"GPU {gpu_idx}"),
+            "vram_size": float(os.environ.get("LOCLLM_GPU_VRAM", "0.0")),
+            "index": gpu_idx,
+            "batch_size": int(os.environ.get("LOCLLM_BATCH_SIZE", BATCH_SIZE)),
+            "accumulation_steps": int(os.environ.get("LOCLLM_GRAD_ACCUM", GRAD_ACCUM)),
+            "optimizer": os.environ.get("LOCLLM_OPTIMIZER", "fp32"),
+        }]
     script_dir = os.path.dirname(os.path.abspath(__file__))
     tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False)
     tmp_path = tmp.name
@@ -156,6 +169,12 @@ RAG_TRAIN_MODE = os.environ.get("LOCLLM_RAG_TRAIN") == "1"
 
 def _select_fim_mode_enable():
     global FIM_MODE
+    # Headless/server-friendly: LOCLLM_FIM=1 (or true/yes) enables FIM mode
+    # without the interactive question (which crashes on py3.8 questionary).
+    if "LOCLLM_FIM" in os.environ:
+        FIM_MODE = os.environ.get("LOCLLM_FIM").lower() not in ("0", "false", "no")
+        print(f"FIM mode from env: {FIM_MODE}")
+        return
     custom_style = Style([
         ("qmark", "fg:#00d7ff bold"),
         ("question", "bold"),
@@ -870,8 +889,8 @@ if __name__ == "__main__":
     gpu = selected[0]
     # Env overrides for speed tuning without touching the GPU selector:
     #   LOCLLM_BATCH_SIZE=8 LOCLLM_GRAD_ACCUM=6 python main_big.py
-    BATCH_SIZE = int(os.environ.get("LOCLLM_BATCH_SIZE", gpu["batch_size"]))
-    GRAD_ACCUM = int(os.environ.get("LOCLLM_GRAD_ACCUM", gpu["accumulation_steps"]))
+    BATCH_SIZE = int(os.environ.get("LOCLLM_BATCH_SIZE", gpu.get("batch_size", BATCH_SIZE)))
+    GRAD_ACCUM = int(os.environ.get("LOCLLM_GRAD_ACCUM", gpu.get("accumulation_steps", GRAD_ACCUM)))
     if "LOCLLM_BATCH_SIZE" in os.environ or "LOCLLM_GRAD_ACCUM" in os.environ:
         print(f"NOTE: env overrides active -> batch_size={BATCH_SIZE} accum={GRAD_ACCUM}")
     OPTIMIZER = gpu.get("optimizer", "fp32")
