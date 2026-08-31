@@ -55,7 +55,7 @@ VOCAB_RESIZE_ON_RESUME = True
 KEEP_CHECKPOINTS_COUNT = 1
 RANDOM_SAMPLING = True
 
-MAX_STEPS = 500_000
+MAX_STEPS = 750_000
 WARMUP_STEPS = 300
 WAKEUP_STEPS = 1500  # wake-up phase (LR burst + freeze) after a layer upscale
 VOCAB_WAKEUP_STEPS = 1500  # wake-up phase when only the vocab was resized
