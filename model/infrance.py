@@ -6,6 +6,8 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+BASE = os.path.dirname(os.path.abspath(__file__))
+
 import requests
 import uvicorn
 from fastapi import FastAPI
@@ -14,6 +16,7 @@ from pydantic import BaseModel
 
 from inference import BLOCK_SIZE, InferenceEngine
 import chatml
+from lang_detect import infer_code_lang
 
 engine = InferenceEngine()
 _lock = threading.Lock()
@@ -55,6 +58,33 @@ class FIMRequest(BaseModel):
     use_rag: bool = False
     rag_top_k: int = 1
     rag_query: str | None = None
+
+
+class OpenAICompletionRequest(BaseModel):
+    """OpenAI-compatible /v1/completions (for Continue tab-autocomplete)."""
+    model: str = "locllm-1.6b"
+    prompt: str
+    suffix: str | None = None
+    max_tokens: int = 128
+    temperature: float = 0.2
+    top_p: float = 0.95
+    stream: bool = False
+    stop: str | list[str] | None = None
+    # locLLM extras: language conditioning (auto-inferred from input if unset)
+    # and RAG context retrieval (like /generate_fim use_rag).
+    lang: str | None = None
+    use_rag: bool = False
+
+
+class OpenAIChatRequest(BaseModel):
+    """OpenAI-compatible /v1/chat/completions (chat test with the FIM model)."""
+    model: str = "locllm-1.6b"
+    messages: list[dict]
+    max_tokens: int = 256
+    temperature: float = 0.3
+    top_p: float = 0.95
+    stream: bool = False
+    stop: str | list[str] | None = None
 
 
 def _normalize_rag_lang(name) -> str:
@@ -142,17 +172,38 @@ def sse_stream(tokens):
     yield f"data: {json.dumps({'done': True, 'text': engine.decode(buf)})}\n\n"
 
 
+# --- completion logging (for later fine-tuning) -----------------------------
+
+_COMPLETIONS_LOG = os.path.join(BASE, "log", "completions.jsonl")
+
+
+def _log_completion(entry: dict):
+    """Best-effort append to model/log/completions.jsonl."""
+    try:
+        entry = {"ts": time.strftime("%Y-%m-%dT%H:%M:%S"), **entry}
+        with open(_COMPLETIONS_LOG, "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    except Exception as e:  # noqa: BLE001 - logging must never break serving
+        print(f"WARNING: completion logging failed: {e}")
+
+
 @app.post("/generate")
 def generate(req: GenerateRequest):
     ids = engine.sp.encode(req.prompt)
 
     def stream():
         with _lock:
-            yield from sse_stream(
-                engine.generate(ids, req.max_tokens, req.temperature,
-                                req.top_k, req.top_p, req.seed,
-                                stop_tokens={engine.fim_end, engine.im_end})
-            )
+            toks = list(engine.generate(
+                ids, req.max_tokens, req.temperature,
+                req.top_k, req.top_p, req.seed,
+                stop_tokens={engine.fim_end, engine.im_end}))
+        _log_completion({
+            "kind": "plain", "model": "locllm-1.6b", "stream": True,
+            "prompt": req.prompt, "suffix": "", "lang": None, "use_rag": False,
+            "completion": engine.decode(toks), "n_tokens": len(toks),
+            "latency_s": None, "endpoint": "/generate",
+        })
+        yield from sse_stream(toks)
 
     return StreamingResponse(stream(), media_type="text/event-stream")
 
@@ -170,11 +221,19 @@ def _run_fim(req: FIMRequest):
 
     def stream():
         with _lock:
-            yield from sse_stream(
-                engine.generate_fim(prefix_ids, suffix_ids, req.max_tokens,
-                                    req.temperature, req.top_k, req.top_p, req.seed,
-                                    lang=req.lang, context_ids=context_ids)
-            )
+            t0 = time.time()
+            toks = list(engine.generate_fim(
+                prefix_ids, suffix_ids, req.max_tokens,
+                req.temperature, req.top_k, req.top_p, req.seed,
+                lang=req.lang, context_ids=context_ids))
+        _log_completion({
+            "kind": "fim", "model": "locllm-1.6b", "stream": True,
+            "prompt": req.prefix, "suffix": req.suffix,
+            "lang": req.lang, "use_rag": req.use_rag,
+            "completion": engine.decode(toks), "n_tokens": len(toks),
+            "latency_s": round(time.time() - t0, 3), "endpoint": "/generate_fim",
+        })
+        yield from sse_stream(toks)
 
     return StreamingResponse(stream(), media_type="text/event-stream")
 
@@ -190,6 +249,174 @@ def generate_fim_rag(req: FIMRequest):
     """Convenience route: always conditions on RAG-retrieved context."""
     req.use_rag = True
     return _run_fim(req)
+
+
+# ---------------------------------------------------------------------------
+# OpenAI-compatible endpoints (for Continue tab-autocomplete, LM Studio, etc.)
+# ---------------------------------------------------------------------------
+
+def _openai_tokens(req: OpenAICompletionRequest):
+    """FIM generation with auto-detected <lang> conditioning.
+
+    Always uses the trained FIM format (<fim_prefix><lang>..</lang>pre<fim_suffix>
+    ..<fim_middle>); suffix is empty when the client didn't send one, so the
+    model still gets its language tag based on the input code.
+    """
+    prompt_ids = engine.sp.encode(req.prompt)
+    suffix_text = (req.suffix or "").strip()
+    suffix_ids = engine.sp.encode(suffix_text) if suffix_text else []
+    lang = req.lang or infer_code_lang(req.prompt)
+    context_ids = None
+    if req.use_rag:
+        context_ids = _build_rag_context(req.prompt, suffix_text, 1, None,
+                                         req.max_tokens)
+    return engine.generate_fim(prompt_ids, suffix_ids, req.max_tokens,
+                               req.temperature, 0, req.top_p, None,
+                               lang=lang, context_ids=context_ids)
+
+
+@app.get("/v1/models")
+def v1_models():
+    return {"object": "list",
+            "data": [{"id": "locllm-1.6b", "object": "model",
+                      "owned_by": "locllm"}]}
+
+
+MAX_OAI_TOKENS = 128     # autocomplete hard cap
+MAX_CHAT_TOKENS = 256    # chat hard cap
+
+
+@app.post("/v1/completions")
+def v1_completions(req: OpenAICompletionRequest):
+    req.max_tokens = max(1, min(req.max_tokens, MAX_OAI_TOKENS))
+    lang = req.lang or infer_code_lang(req.prompt)
+
+    def _log(tokens, t0, streamed):
+        _log_completion({
+            "kind": "openai", "model": req.model, "stream": streamed,
+            "prompt": req.prompt, "suffix": req.suffix or "",
+            "lang": lang, "use_rag": req.use_rag,
+            "completion": engine.decode(tokens), "n_tokens": len(tokens),
+            "latency_s": round(time.time() - t0, 3), "endpoint": "/v1/completions",
+        })
+
+    if req.stream:
+        def stream():
+            with _lock:
+                t0 = time.time()
+                toks = list(_openai_tokens(req))
+            buf = []
+            prev = ""
+            for tok in toks:
+                buf.append(tok)
+                text = engine.decode(buf)
+                chunk = text[len(prev):]
+                prev = text
+                if chunk:
+                    yield f"data: {json.dumps({'choices': [{'text': chunk, 'index': 0, 'finish_reason': None}]})}\n\n"
+            yield f"data: {json.dumps({'choices': [{'text': '', 'index': 0, 'finish_reason': 'stop'}]})}\n\n"
+            yield "data: [DONE]\n\n"
+            _log_completion({
+                "kind": "openai", "model": req.model, "stream": True,
+                "prompt": req.prompt, "suffix": req.suffix or "",
+                "lang": lang, "use_rag": req.use_rag,
+                "completion": engine.decode(toks), "n_tokens": len(toks),
+                "latency_s": round(time.time() - t0, 3), "endpoint": "/v1/completions",
+            })
+        return StreamingResponse(stream(), media_type="text/event-stream")
+
+    with _lock:
+        t0 = time.time()
+        tokens = list(_openai_tokens(req))
+        _log(tokens, t0, False)
+    text = engine.decode(tokens)
+    return {
+        "id": f"cmpl-{int(time.time() * 1000)}",
+        "object": "text_completion",
+        "created": int(time.time()),
+        "model": req.model,
+        "choices": [{"text": text, "index": 0, "logprobs": None,
+                     "finish_reason": "stop"}],
+        "usage": {"prompt_tokens": len(engine.sp.encode(req.prompt)),
+                  "completion_tokens": len(tokens),
+                  "total_tokens": len(engine.sp.encode(req.prompt)) + len(tokens)},
+    }
+
+
+def _chat_prompt(req: OpenAIChatRequest) -> str:
+    """Flatten messages to a plain prompt (best-effort for a FIM code model)."""
+    parts = []
+    for m in req.messages:
+        if not isinstance(m, dict):
+            continue
+        role = m.get("role", "user")
+        content = m.get("content")
+        if isinstance(content, list):  # multimodal parts -> keep text only
+            content = " ".join(str(c.get("text", "")) for c in content
+                               if isinstance(c, dict))
+        if content:
+            parts.append(str(content))
+    return "\n".join(parts).strip()
+
+
+@app.post("/v1/chat/completions")
+def v1_chat_completions(req: OpenAIChatRequest):
+    """Chat-test endpoint: the FIM model isn't chat-tuned, but this makes
+    Continue chat work end-to-end (completion-style generation)."""
+    req.max_tokens = max(1, min(req.max_tokens, MAX_CHAT_TOKENS))
+
+    def _chat_tokens(prompt: str):
+        lang = infer_code_lang(prompt)
+        return engine.generate_fim(engine.sp.encode(prompt), [], req.max_tokens,
+                                   req.temperature, 0, req.top_p, None, lang=lang)
+
+    def _chat_response(tokens, t0):
+        text = engine.decode(tokens)
+        _log_completion({
+            "kind": "chat", "model": req.model, "stream": req.stream,
+            "prompt": _chat_prompt(req), "suffix": "", "lang": None,
+            "use_rag": False, "completion": text, "n_tokens": len(tokens),
+            "latency_s": round(time.time() - t0, 3),
+            "endpoint": "/v1/chat/completions",
+        })
+        return {
+            "id": f"chatcmpl-{int(time.time() * 1000)}",
+            "object": "chat.completion",
+            "created": int(time.time()),
+            "model": req.model,
+            "choices": [{"index": 0,
+                         "message": {"role": "assistant", "content": text},
+                         "finish_reason": "stop"}],
+            "usage": {"prompt_tokens": 0, "completion_tokens": len(tokens),
+                      "total_tokens": len(tokens)},
+        }
+
+    prompt = _chat_prompt(req)
+    if not prompt:
+        return {"error": "empty messages"}
+
+    if req.stream:
+        def stream():
+            with _lock:
+                t0 = time.time()
+                toks = list(_chat_tokens(prompt))
+            buf, prev = [], ""
+            for tok in toks:
+                buf.append(tok)
+                text = engine.decode(buf)
+                chunk = text[len(prev):]
+                prev = text
+                if chunk:
+                    yield f"data: {json.dumps({'choices': [{'index': 0, 'delta': {'content': chunk}, 'finish_reason': None}]})}\n\n"
+            yield f"data: {json.dumps({'choices': [{'index': 0, 'delta': {}, 'finish_reason': 'stop'}]})}\n\n"
+            yield "data: [DONE]\n\n"
+            _chat_response(toks, t0)
+        return StreamingResponse(stream(), media_type="text/event-stream")
+
+    with _lock:
+        t0 = time.time()
+        tokens = list(_chat_tokens(prompt))
+        return _chat_response(tokens, t0)
 
 
 @app.get("/health")

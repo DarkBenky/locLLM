@@ -35,8 +35,8 @@ from datasets import load_dataset
 
 from safim_helpers import (
     COMPLETION_PLACEHOLDER, LANG_MAP, POST_PROCESSORS,
-    ExecEvalClient, apply_postprocessors, check_syntax, get_infilling_parts,
-    syntax_match,
+    ExecEvalClient, LocalExecClient, apply_postprocessors, check_syntax,
+    get_infilling_parts, syntax_match,
 )
 
 TASKS = ("block", "control", "api", "block_v2")
@@ -236,11 +236,29 @@ def generate_task(client: ServerClient, task: str, rows: list[dict],
     return done, n_err
 
 
+def build_executor(mode: str):
+    """daemon | local | off | auto (daemon -> local -> off)."""
+    if mode == "daemon":
+        return ExecEvalClient(DEFAULT_DAEMON_URL)
+    if mode == "local":
+        return LocalExecClient()
+    if mode == "off":
+        return None
+    daemon = ExecEvalClient(DEFAULT_DAEMON_URL)
+    if daemon.available():
+        return daemon
+    local = LocalExecClient()
+    return local if local.available() else None
+
+
 def evaluate_task(task: str, rows: list[dict], outputs: dict[str, str],
-                  outdir: str, evalc: ExecEvalClient, tag: str = "") -> list[dict]:
+                  outdir: str, evalc: ExecEvalClient | LocalExecClient | None,
+                  tag: str = "", write: bool = True,
+                  disable: bool = False) -> list[dict]:
     results_path = os.path.join(outdir, f"results_{task}{tag}.jsonl")
-    ev = []
-    for problem in tqdm.tqdm(rows, desc=f"[{task}] evaluate", unit="sample"):
+    exec_ok = evalc is not None and evalc.available()
+
+    def score_one(problem: dict) -> dict:
         tid = problem["task_id"]
         completion = outputs.get(tid)
         if tid not in outputs:
@@ -249,9 +267,12 @@ def evaluate_task(task: str, rows: list[dict], outputs: dict[str, str],
             if problem.get("unit_tests"):
                 if completion == problem["ground_truth"]:
                     result, passed = "PASSED", True
-                else:
+                elif exec_ok and (not hasattr(evalc, "supports")
+                                  or evalc.supports(problem["lang"])):
                     result, passed = evalc.run_test(
                         problem, {"task_id": tid, "completion": completion})
+                else:
+                    result, passed = "WRONG_ANSWER", False
             else:
                 if syntax_match(completion, problem["ground_truth"], problem["lang"]):
                     result, passed = "EXACT_MATCH", True
@@ -264,12 +285,27 @@ def evaluate_task(task: str, rows: list[dict], outputs: dict[str, str],
                 "{{completion}}", completion if completion is not None else "")
             if "unit_tests" in problem and not check_syntax(full_code):
                 result = "COMPILATION_ERROR"
-        ev.append({"task_id": tid, "result": result, "passed": passed,
-                   "check_result": 0})
+        return {"task_id": tid, "result": result, "passed": passed,
+                "check_result": 0}
 
-    with open(results_path, "w", encoding="utf-8") as f:
-        for r in ev:
-            f.write(json.dumps(r) + "\n")
+    # Local execution is CPU/process-bound: parallelize it when there are
+    # enough samples (keeps the big runs from taking hours of serial scoring).
+    if isinstance(evalc, LocalExecClient) and len(rows) > 16:
+        from concurrent.futures import ThreadPoolExecutor
+        workers = min(8, os.cpu_count() or 4)
+        with ThreadPoolExecutor(max_workers=workers) as ex:
+            ev = list(ex.map(score_one, rows))
+        if not disable:
+            print(f"[{task}] parallel local execution scored {len(rows)} samples "
+                  f"with {workers} workers")
+    else:
+        ev = [score_one(p) for p in tqdm.tqdm(rows, desc=f"[{task}] evaluate",
+                                              unit="sample", disable=disable)]
+
+    if write:
+        with open(results_path, "w", encoding="utf-8") as f:
+            for r in ev:
+                f.write(json.dumps(r) + "\n")
     return ev
 
 
@@ -307,7 +343,7 @@ def summarize(task: str, rows: list[dict], ev: list[dict]):
 # ---------------------------------------------------------------------------
 
 def print_task_row(task: str, pct: dict, total: dict, fail_hist: dict,
-                   daemon_up: bool):
+                   exec_mode: str):
     langs = ["cpp", "java", "python", "csharp", "all"]
     row = ",".join(f"{pct.get(l, 0.0):.6f}" for l in langs)
     hist = ",".join(str(fail_hist.get(o, 0)) for o in
@@ -318,10 +354,15 @@ def print_task_row(task: str, pct: dict, total: dict, fail_hist: dict,
     print(f"task,{row}")
     print(f"lang pass@1: " + ", ".join(f"{l}={pct.get(l, 0.0):.2f}%" for l in langs))
     print(f"failed outcomes: {dict(fail_hist)}")
-    if task in ("block", "block_v2", "control") and not daemon_up:
-        print("NOTE: ExecEval daemon not reachable on :5000 -> block/control "
-              "were scored by EXACT ground-truth match only, NOT execution. "
-              "Those numbers are NOT directly comparable to the leaderboard.")
+    if task in ("block", "block_v2", "control"):
+        if exec_mode == "daemon":
+            print("NOTE: scored with the ExecEval daemon (execution) - leaderboard-comparable.")
+        elif exec_mode == "local":
+            print("NOTE: scored by local execution (g++/javac/mono/python3) - "
+                  "comparable in spirit to the leaderboard; no Docker needed.")
+        else:
+            print("NOTE: no execution scorer -> block/control were scored by EXACT "
+                  "ground-truth match only, NOT comparable to the leaderboard.")
     if task == "block_v2":
         print("NOTE: block_v2 is the contamination-check split (no leaderboard entry).")
 
@@ -400,6 +441,81 @@ def print_rag_delta(results_by_task: dict, tasks: list[str]):
         print(f"{task:<10}{off:>10.2f}{on:>10.2f}{on - off:>+10.2f}")
 
 
+def _snippet(s: str, n: int = 90) -> str:
+    s = (s or "").replace("\r", "").replace("\n", "⏎")
+    return s[:n] + ("…" if len(s) > n else "")
+
+
+def cmd_status(args):
+    """Live view of the running benchmark: score outputs generated so far."""
+    import time as _time
+    evalc = build_executor(args.exec)
+    exec_mode = "daemon" if isinstance(evalc, ExecEvalClient) else (
+        "local" if isinstance(evalc, LocalExecClient) else "off")
+    if args.rag == "both":
+        modes = ["on", "off"]
+    else:
+        wanted = ["on"] if args.rag == "on" else ["off"]
+        # Auto-detect: include whichever mode actually has generated outputs,
+        # so a bare `--status` shows the in-progress run (RAG-tagged files).
+        found = [m for m in ("on", "off")
+                 if any(os.path.exists(os.path.join(
+                     args.outdir, f"outputs_{t}{'_rag' if m == 'on' else ''}.jsonl"))
+                     for t in args.tasks)]
+        modes = found or wanted
+        modes = ["on", "off"] if set(modes) == {"on", "off"} else modes
+        if modes != wanted:
+            print(f"[status] no '{wanted[0]}' outputs yet; showing "
+                  f"{'/'.join(modes)} (use --rag {wanted[0]} to force)")
+    print(f"\nstatus @ {_time.strftime('%H:%M:%S')} | execution scorer: "
+          f"{exec_mode} ({'daemon' if exec_mode == 'daemon' else 'local g++/javac/mono/python3' if exec_mode == 'local' else 'OFF - exact match only'})")
+    any_output = False
+    for task in args.tasks:
+        rows = None
+        for mode in modes:
+            tag = "_rag" if mode == "on" else ""
+            outputs_path = os.path.join(args.outdir, f"outputs_{task}{tag}.jsonl")
+            outputs = load_outputs(outputs_path)
+            if not outputs:
+                continue
+            if rows is None:
+                rows = load_task(task, args.limit or 0)
+            rows_gen = [p for p in rows if p["task_id"] in outputs]
+            if not rows_gen:
+                continue
+            ev = evaluate_task(task, rows_gen, outputs, args.outdir, evalc,
+                               tag=tag, write=False, disable=True)
+            pct, pass_cnt, total, fail_hist = summarize(task, rows_gen, ev)
+            any_output = True
+            errs = 0
+            err_path = os.path.join(args.outdir, f"errors_{task}{tag}.log")
+            if os.path.exists(err_path):
+                with open(err_path, encoding="utf-8") as f:
+                    errs = sum(1 for _ in f)
+            passed, failed = pass_cnt["all"], total["all"] - pass_cnt["all"]
+            print(f"\n[{task}{tag}] scored {len(rows_gen)}/{len(rows)} "
+                  f"(total generated {len(outputs)}) | "
+                  f"PASS {passed} | FAIL {failed} | errors {errs} | "
+                  f"pass@1 {pct['all']:.2f}%")
+            print("  langs: " + ", ".join(
+                f"{l}={pct.get(l, 0.0):.2f}%" for l in
+                ["cpp", "java", "python", "csharp"]))
+            src = {p["task_id"]: p for p in rows_gen}
+            passed_ev = [r for r in ev if r["passed"]][-max(1, args.show):]
+            failed_ev = [r for r in ev if not r["passed"]][-max(1, args.show):]
+            for label, items in (("PASS", passed_ev), ("FAIL", failed_ev)):
+                if not items:
+                    continue
+                print(f"  last {label}:")
+                for r in items:
+                    p = src[r["task_id"]]
+                    print(f"    {r['task_id']} [{p['lang']}] {r['result']}")
+                    print(f"      gt : {_snippet(p['ground_truth'])}")
+                    print(f"      got: {_snippet(outputs[r['task_id']])}")
+    if not any_output:
+        print("\nno outputs yet — generation is still on its first task/mode.")
+
+
 # ---------------------------------------------------------------------------
 # main
 # ---------------------------------------------------------------------------
@@ -430,12 +546,35 @@ def main():
     ap.add_argument("--generate-only", action="store_true")
     ap.add_argument("--evaluate-only", action="store_true")
     ap.add_argument("--setup", action="store_true")
+    ap.add_argument("--status", action="store_true",
+                    help="show live pass/fail status of the running benchmark "
+                         "(scoring whatever has been generated so far)")
+    ap.add_argument("--show", type=int, default=3,
+                    help="with --status: how many last PASS/FAIL cases to print")
+    ap.add_argument("--watch", action="store_true",
+                    help="with --status: refresh every 60s until Ctrl-C")
+    ap.add_argument("--exec", choices=["auto", "daemon", "local", "off"],
+                    default="auto",
+                    help="execution scorer for block/control: auto = ExecEval "
+                         "daemon if up, else local compilers, else exact match; "
+                         "local = g++/javac/mono/python3 (no Docker)")
     args = ap.parse_args()
     if "all" in args.tasks:
         args.tasks = ["block", "control", "api"]
 
     if args.setup:
         cmd_setup(args)
+        return
+
+    if args.status:
+        try:
+            while True:
+                cmd_status(args)
+                if not args.watch:
+                    break
+                time.sleep(60)
+        except KeyboardInterrupt:
+            pass
         return
 
     os.makedirs(args.outdir, exist_ok=True)
@@ -453,12 +592,19 @@ def main():
               f"(or run with --cpu/--gpu to let eval.py start it)")
         sys.exit(1)
 
-    evalc = ExecEvalClient(DEFAULT_DAEMON_URL)
-    daemon_up = evalc.available()
-    if not daemon_up:
-        print("[eval] WARNING: ExecEval daemon (:5000) not reachable. "
-              "block/control will use exact-match fallback (not comparable "
-              "to the leaderboard). See ./model/eval.py --setup")
+    evalc = build_executor(args.exec)
+    exec_mode = "daemon" if isinstance(evalc, ExecEvalClient) else (
+        "local" if isinstance(evalc, LocalExecClient) else "off")
+    if exec_mode == "daemon":
+        print("[eval] execution scorer: ExecEval daemon (:5000)")
+    elif exec_mode == "local":
+        print("[eval] execution scorer: LOCAL (g++/javac/mono/python3) - "
+              "block/control will be execution-scored, leaderboard-style, "
+              "no Docker needed")
+    else:
+        print("[eval] WARNING: no execution scorer available - block/control "
+              "will use exact-match fallback (not comparable to the leaderboard). "
+              "Install runtimes or use --exec local.")
 
     results_by_task = {}
     modes = ["on", "off"] if args.rag == "both" else (
@@ -487,7 +633,7 @@ def main():
             if not args.generate_only and outputs:
                 ev = evaluate_task(task, rows, outputs, args.outdir, evalc, tag=tag)
                 pct, pass_cnt, total, fail_hist = summarize(task, rows, ev)
-                print_task_row(task, pct, total, fail_hist, daemon_up)
+                print_task_row(task, pct, total, fail_hist, exec_mode)
                 results_by_task[(task, mode)] = pct
             elif args.generate_only:
                 print(f"[{task}] generation only: {len(outputs)} completions")

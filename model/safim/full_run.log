@@ -1,0 +1,12 @@
+[eval] starting inference server on CUDA device 1 (torch index; see nvidia-smi for physical GPU)
+[eval] server pid=424609, waiting for http://localhost:8000/health ...
+[eval] server is up
+[eval] execution scorer: LOCAL (g++/javac/mono/python3) - block/control will be execution-scored, leaderboard-style, no Docker needed
+[eval] full benchmark: block, control, api — running both modes (no-RAG then RAG); use --task/--limit/--refresh to narrow.
+
+########## mode: RAG ##########
+
+=== block ===
+[block] 8781 samples
+[block_rag] generate:   0%|          | 0/8781 [00:00<?, ?sample/s][block_rag] generate:   5%|▍         | 401/8781 [00:04<01:37, 86.15sample/s][block_rag] generate:   5%|▍         | 401/8781 [00:19<01:37, 86.15sample/s][block_rag] generate:   5%|▍         | 405/8781 [00:23<10:42, 13.03sample/s][block_rag] generate:   5%|▍         | 406/8781 [00:27<13:43, 10.17sample/s][block_rag] generate:   5%|▍         | 406/8781 [00:39<13:43, 10.17sample/s][block_rag] generate:   5%|▍         | 409/8781 [00:39<25:28,  5.48sample/s][block_rag] generate:   5%|▍         | 410/8781 [00:44<31:03,  4.49sample/s][block_rag] generate:   5%|▍         | 412/8781 [00:52<46:38,  2.99sample/s][block_rag] generate:   5%|▍         | 414/8781 [01:00<1:06:13,  2.11sample/s][block_rag] generate:   5%|▍         | 415/8781 [01:04<1:18:48,  1.77sample/s][block_rag] generate:   5%|▍         | 416/8781 [01:08<1:35:46,  1.46sample/s][block_rag] generate:   5%|▍         | 417/8781 [01:12<1:57:59,  1.18sample/s][block_rag] generate:   5%|▍         | 418/8781 [01:16<2:27:50,  1.06s/sample][block_rag] generate:   5%|▍         | 419/8781 [01:20<3:02:19,  1.31s/sample][block_rag] generate:   5%|▍         | 420/8781 [01:25<3:46:19,  1.62s/sample][block_rag] generate:   5%|▍         | 421/8781 [01:29<4:36:17,  1.98s/sample]/home/user/miniconda3/lib/python3.14/multiprocessing/resource_tracker.py:475: UserWarning: resource_tracker: There appear to be 1 leaked semaphore objects to clean up at shutdown: {'/mp-odvjp3g0'}
+  warnings.warn(

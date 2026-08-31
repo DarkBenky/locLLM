@@ -12,7 +12,11 @@ API (Language.build_library is gone in tree-sitter >= 0.22).
 from __future__ import annotations
 
 import ast
+import os
 import re
+import shutil
+import subprocess
+import tempfile
 from typing import Iterable
 
 import requests
@@ -396,3 +400,117 @@ class ExecEvalClient:
             if o.get("result") is not None and len(str(o["result"])) > 1000:
                 o["result"] = str(o["result"])[:1000]
         return result, all(o.get("exec_outcome") == "PASSED" for o in result)
+
+
+# ---------------------------------------------------------------------------
+# Local execution client (no Docker daemon needed)
+# ---------------------------------------------------------------------------
+
+def _norm_output(text: str) -> list[str]:
+    """Normalize program output for comparison (strip trailing ws, drop trailing empty lines)."""
+    lines = [l.rstrip() for l in text.splitlines()]
+    while lines and not lines[-1].strip():
+        lines.pop()
+    return lines
+
+
+class LocalExecClient:
+    """Run SAFIM unit tests directly with local compilers/runtimes.
+
+    Same interface as ExecEvalClient (available() / run_test()) so eval.py can
+    use it interchangeably. Supported: python (python3), cpp (g++), java
+    (javac/java from conda), csharp (mcs/mono from conda).
+    """
+
+    def __init__(self, timeout: float = 10.0, compile_timeout: float = 60.0):
+        self.timeout = timeout
+        self.compile_timeout = compile_timeout
+
+    def available(self, timeout: float = 2.0) -> bool:
+        return self.supports("python") or self.supports("cpp")
+
+    def supports(self, lang: str) -> bool:
+        if lang == "python":
+            return shutil.which("python3") is not None
+        if lang == "cpp":
+            return shutil.which("g++") is not None
+        if lang == "java":
+            return shutil.which("javac") is not None and shutil.which("java") is not None
+        if lang == "csharp":
+            return shutil.which("mcs") is not None and shutil.which("mono") is not None
+        return False
+
+    def run_test(self, problem: dict, completion: dict):
+        assert problem["task_id"] == completion["task_id"]
+        code = problem["eval_prompt"].replace("{{completion}}", completion["completion"])
+        return self._execute(problem["lang"], code, problem.get("unit_tests") or [])
+
+    def _build(self, lang: str, code: str, tmp: str) -> list[str]:
+        """Write source (and compile if needed); return the run command."""
+        if lang == "cpp":
+            with open(os.path.join(tmp, "main.cpp"), "w", encoding="utf-8") as f:
+                f.write(code)
+            subprocess.run(["g++", "-O2", "-std=c++17", "main.cpp", "-o", "main"],
+                           cwd=tmp, capture_output=True, timeout=self.compile_timeout,
+                           check=True)
+            return ["./main"]
+        if lang == "java":
+            m = re.search(r"public\s+(?:final\s+)?class\s+(\w+)", code)
+            if not m:
+                raise RuntimeError("no public class in java source")
+            name = m.group(1)
+            with open(os.path.join(tmp, name + ".java"), "w", encoding="utf-8") as f:
+                f.write(code)
+            subprocess.run(["javac", name + ".java"], cwd=tmp, capture_output=True,
+                           timeout=self.compile_timeout, check=True)
+            return ["java", "-cp", tmp, name]
+        if lang == "csharp":
+            with open(os.path.join(tmp, "Program.cs"), "w", encoding="utf-8") as f:
+                f.write(code)
+            subprocess.run(["mcs", "-out:Program.exe", "Program.cs"], cwd=tmp,
+                           capture_output=True, timeout=self.compile_timeout, check=True)
+            return ["mono", "Program.exe"]
+        if lang == "python":
+            with open(os.path.join(tmp, "main.py"), "w", encoding="utf-8") as f:
+                f.write(code)
+            return ["python3", "main.py"]
+        raise RuntimeError(f"unsupported lang: {lang}")
+
+    def _execute(self, lang: str, code: str, tests: list):
+        tmp = tempfile.mkdtemp(prefix="safim_exec_")
+        try:
+            try:
+                cmd = self._build(lang, code, tmp)
+            except (subprocess.TimeoutExpired, subprocess.CalledProcessError,
+                    RuntimeError, OSError):
+                return ([{"input": t.get("input", ""), "output": t.get("output", []),
+                          "result": "compile failed",
+                          "exec_outcome": "COMPILATION_ERROR"} for t in tests], False)
+
+            results = []
+            for t in tests:
+                entry = {"input": t.get("input", ""), "output": t.get("output", [])}
+                try:
+                    r = subprocess.run(
+                        cmd, cwd=tmp, input=(t.get("input", "") or "").encode("utf-8"),
+                        capture_output=True, timeout=self.timeout)
+                except subprocess.TimeoutExpired:
+                    entry.update({"result": "", "exec_outcome": "TIME_LIMIT_EXCEEDED"})
+                    results.append(entry)
+                    continue
+                if r.returncode != 0:
+                    entry.update({"result": r.stderr.decode("utf-8", "replace")[:500],
+                                  "exec_outcome": "RUNTIME_ERROR"})
+                    results.append(entry)
+                    continue
+                actual = r.stdout.decode("utf-8", "replace")
+                expected = t.get("output", [])
+                if isinstance(expected, str):
+                    expected = [expected]
+                ok = _norm_output(actual) == _norm_output("\n".join(str(x) for x in expected))
+                entry.update({"result": actual,
+                              "exec_outcome": "PASSED" if ok else "WRONG_ANSWER"})
+                results.append(entry)
+            return results, all(o.get("exec_outcome") == "PASSED" for o in results)
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)

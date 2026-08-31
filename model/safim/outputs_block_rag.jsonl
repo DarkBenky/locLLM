@@ -1,0 +1,619 @@
+{"task_id": "block_completion_000000", "completion": "\t\t\r\n\t\t\t\tfor(Pair v : mp.get(u)) \r\n\t\t\t\t\tv = v.v;\r\n\t\t\t\t\r\n\t\t\t\tmp.putIfAbsent(u, v);\r\n\t\t\t\t\r\n\t\t\t\tmp.putIfAbsent(v, x);\r\n\t\t\t\t\r\n"}
+{"task_id": "block_completion_000001", "completion": "\r\n\t                              a[k][y]=1;\r\n\t                             \r\n\t                              a[k][y]=1;\r\n\t                             \r\n\t                              a[k][y]=1;\r\n\t                             \r\n\t                              a[k][y]=1;\r\n\t                             \r\n\t                              a[k][y]=1;\r\n\t                             \r\n\t                              a[k][y]=1;\r\n\t                             \r\n\t                              a[k][y]=1;\r\n\t                             \r\n"}
+{"task_id": "block_completion_000002", "completion": "ans[i]|=1<<i;\r\n"}
+{"task_id": "block_completion_000003", "completion": ""}
+{"task_id": "block_completion_000004", "completion": "element[i] = unsetBit(element[i], k);\r\n\r\n\t\t\t\t\t\t\tbreak;\r\n\r\n"}
+{"task_id": "block_completion_000005", "completion": "if(x==0){\r\n\t\t\t\ttmp=1;\r\n\t\t\t\tans[i] = ans[i]<<1;\r\n\t\t\t\tans[i] = ans[i]<<2;\r\n\t\t\t}\r\n"}
+{"task_id": "block_completion_000006", "completion": "if (aa[i] == 0) {\r\n\t\t\t\taa[i] = aa[i] + 1;\r\n\t\t\t\taa[i] = aa[i] + 1;\r\n\t\t\t}\r\n"}
+{"task_id": "block_completion_000007", "completion": "\t\tprintf(\"%d \",ans[i]);\r\n\t\t\t\tcontinue;\r\n\t\t}\r\n\t\tif(v == w){\r\n\t\t\tans[i] = -1;\r\n\t\t\tcontinue;\r\n\t\t}\r\n\t\tif(w == w){\r\n\t\t\tprintf(\"%d \",ans[i]);\r\n\t\t\tcontinue;\r\n\t\t}\r\n\t\tif(v == w){\r\n\t\t\tprintf(\"%d \",ans[i]);\r\n\t\t\tcontinue;\r\n"}
+{"task_id": "block_completion_000008", "completion": "   res = min(res, a[v]);\r\n       }\r\n       \r\n       if (res == 1) {\r\n           cout << res << ' ';\r\n           return;\r\n"}
+{"task_id": "block_completion_000009", "completion": " qs2[e[0]].push_back({ e[1],e[2] });\r\n"}
+{"task_id": "block_completion_000010", "completion": "if(E[i][j]!=E[i][j+1])\r\n           {\r\n               cout<<E[i][j]<<\" \";\r\n               break;\r\n           }\r\n           if(E[i][j]!=E[i][j+1])\r\n           {\r\n               cout<<E[i][j]<<\" \";\r\n               break;\r\n           }\r\n           if(E[i][j]!=E[i][j+1])\r\n"}
+{"task_id": "block_completion_000011", "completion": "\t\tmx_pos[x] = x;\r\n\t\t\t\tmx_pos[y] = y;\r\n\t\t\t\tmx_pos[z] = z;\r\n\t\t\t\tans[x] = 1;\r\n\t\t\t\tans[y] = 1;\r\n\t\t\t\tmx_pos[x] = ans[x];\r\n\t\t\t\tmx_pos[y] = ans[y];\r\n"}
+{"task_id": "block_completion_000012", "completion": ""}
+{"task_id": "block_completion_000013", "completion": "if(x == y) {\r\n\t\t\t\tx = i;\r\n\t\t\t\ty = j;\r\n\t\t\t}\r\n"}
+{"task_id": "block_completion_000014", "completion": "ans[i] = ans[i] >> 1;\r\n"}
+{"task_id": "block_completion_000015", "completion": "\t\t\t\t\ttg[u[i]] = tg[v[i]] = 1;\r\n\t\t\t\t\t\ttg[v[i]] = 1;\r\n"}
+{"task_id": "block_completion_000016", "completion": "start[i] ^= start[j]\r\n"}
+{"task_id": "block_completion_000017", "completion": "if i == j:\r\n            continue\r\n"}
+{"task_id": "block_completion_000018", "completion": "m[i] = M[j] ^ M[i]\r\n"}
+{"task_id": "block_completion_000019", "completion": "   mask >>= 1\n"}
+{"task_id": "block_completion_000020", "completion": "val[b] = val[a]\n"}
+{"task_id": "block_completion_000021", "completion": "ans = ans & a[j]\r\n\r\n"}
+{"task_id": "block_completion_000022", "completion": "bits[i, j] = false;\n                        bits[i, j] = false;\n"}
+{"task_id": "block_completion_000023", "completion": "var p = st[k].Item2;\n                        if(bits[p, j] == null)\n                        {\n                            bits[p, j] = true;\n                        }\n                        else\n                        {\n                            bits[p, j] = false;\n                            break;\n                        }\n"}
+{"task_id": "block_completion_000024", "completion": "var c = cons[j];\r\n                    var otherIdx = c.L == i ? c.R : c.L;\r\n                    var otherMin = c.Value & allowedOnes;\r\n                    min[otherIdx] |= otherMin;\r\n                    c.Rest &= ~otherMin;\r\n"}
+{"task_id": "block_completion_000025", "completion": "\t\td++;\r\n\t\t\t\ts/=k;\r\n\t\t\t\ts/=b;\r\n\t\t\t\ts/=s;\r\n"}
+{"task_id": "block_completion_000026", "completion": "\t\tcout << k - 1<<\" \";\r\n"}
+{"task_id": "block_completion_000027", "completion": "printf(\"%lld \",k-1);\r\n"}
+{"task_id": "block_completion_000028", "completion": "\t\ts-=b*k;\n\t\t\t\t\ts-=k;\n"}
+{"task_id": "block_completion_000029", "completion": "   for(int i=0;i<v.size();i++)\n                    cout << v[i] << ' ';\n                    v[i] = v[i+1] - v[i];\n                    v[i] = v[i+2] - v[i+1];\n                    v[i] = v[i+3] - v[i+2];\n                    v[i] = v[i+4] - v[i+1];\n"}
+{"task_id": "block_completion_000030", "completion": "a[i] = s - count * (k - 1);\r\n"}
+{"task_id": "block_completion_000031", "completion": "cout << \"0\" << endl;\r\n"}
+{"task_id": "block_completion_000032", "completion": "cout << \"0 \" << endl;\r\n       return;\r\n   }\r\n   ll n, k, b, s;\r\n   cin >> n >> k >> b >> s;\r\n   if (s == k * b) {\r\n       for (int i = 1; i < n; i++)\r\n           cout << \"0 \" << endl;\r\n       cout << k * b << '\\n';\r\n       return;\r\n"}
+{"task_id": "block_completion_000033", "completion": "      ar[n-1]=s;\r\n"}
+{"task_id": "block_completion_000034", "completion": "System.out.print(k-1+\" \");\r\n"}
+{"task_id": "block_completion_000035", "completion": ""}
+{"task_id": "block_completion_000036", "completion": "arr[i] = s;\r\n                        max = arr[i];\r\n                        min = arr[i];\r\n                        max = arr[i];\r\n                        min = arr[i];\r\n                        max = arr[i];\r\n                        min = arr[i];\r\n                        max = arr[i];\r\n                        min = arr[i];\r\n                        max = arr[i];\r\n                        min = arr[i];\r\n                        max = arr[i];\r\n                        min = arr[i];\r\n"}
+{"task_id": "block_completion_000037", "completion": "      ar[n-1]=s;\r\n                i++;\r\n"}
+{"task_id": "block_completion_000038", "completion": "int n, m;\r\n        cin>>n>>m;\r\n        vector<int> row;\r\n        for(int i=0;i<n;i++)\r\n            for(int j=0;j<m;j++)\r\n                row[i][j] = i;\r\n        for(int i=0;i<n;i++)\r\n            for(int j=0;j<m;j++)\r\n                row[i][j] = j;\r\n        for(int i=0;i<n;i++)\r\n"}
+{"task_id": "block_completion_000039", "completion": "printf(\"%d\\n\", n-1);\r\n"}
+{"task_id": "block_completion_000040", "completion": "res = (n-1) + (m-1) + 1 + min(n,m)-1;\r\n"}
+{"task_id": "block_completion_000041", "completion": "std::cin>>n>>m;\r\n"}
+{"task_id": "block_completion_000042", "completion": "printf(\"0\\n\");\r\n"}
+{"task_id": "block_completion_000043", "completion": "cout<<2*min(n,m)+max(n,m)-2;\n\t\t\treturn 0;\n"}
+{"task_id": "block_completion_000044", "completion": "cout<<ans<<endl;\r\n"}
+{"task_id": "block_completion_000045", "completion": "int n, m;\r\n        scanf(\"%ld\", &n);\r\n        for(int i=0; i<n; i++){\r\n            scanf(\"%ld\", &m);\r\n        }\r\n        int t_min = t;\r\n        for(int i=0; i<n; i++){\r\n            scanf(\"%ld\", &t_min);\r\n        }\r\n        for(int i=0; i<n; i++){\r\n            scanf(\"%ld\", &t_min);\r\n        }\r\n"}
+{"task_id": "block_completion_000046", "completion": "for(int i=0;i<n;i++){\r\n\t\t\t\tcin>>m>>n>>m;\r\n\t\t\t}\r\n\t\t\tcout<<m<<endl;\r\n"}
+{"task_id": "block_completion_000047", "completion": "for(int i=0; i<n; i++)\r\n        {\r\n            for(int j=0; j<m; j++)\r\n            {\r\n                cout<<i<<\" \";\r\n            }\r\n            cout<<endl;\r\n        }\r\n        cout<<endl;\r\n    }\r\n    \r\n    int main()\r\n    {\r\n        // #ifndef ONLINE_JUDGE\r\n        //    freopen(\"input.txt\", \"r\", stdin);\r\n        //    freopen(\"output.txt\", \"w\", stdout);\r\n        //    "}
+{"task_id": "block_completion_000048", "completion": "scanf(\"%d\",&n);\r\n        printf(\"%d\\n\",(n+1)*(n+1));\r\n    }\r\n   for(i=0;i<t;i++){\r\n        printf(\"%d\\n\",(n+1)*(n+1));\r\n    }\r\n   printf(\"\\n\");\r\n   for(i=0;i<t;i++){\r\n        printf(\"%d\\n\",(n+1)*(n+1));\r\n"}
+{"task_id": "block_completion_000049", "completion": "std::cout << n + m - 2 + x << std::endl;\r\n       }\r\n       else {\r\n           if (m == n) {\r\n               std::cout << n + m - 2 + x << std::endl;\r\n           }\r\n           else {\r\n               std::cout << n + m - 2 + x << std::endl;\r\n           }\r\n       }\r\n       if (m == n) {\r\n           std::cout << n + m - 2 + x << std::endl;\r\n"}
+{"task_id": "block_completion_000050", "completion": "int t;\r\n\t\tcin >> t;\r\n\t\tfor(int i=0; i<n; i++)\r\n\t\t{\r\n\t\t\tcin >> n >> m;\r\n\t\t}\r\n\t\tint t;\r\n\t\tfor(int i=0; i<n; i++)\r\n\t\t{\r\n\t\t\tcin >> t;\r\n\t\t}\r\n\t\tint t;\r\n\t\tfor(int i=0; i<m; i++)\r\n\t\t{\r\n\t\t\tcin >> t;\r\n\t\t}\r\n\t\tint t"}
+{"task_id": "block_completion_000051", "completion": "s = _line.ToCharArray();\r\n"}
+{"task_id": "block_completion_000052", "completion": "   s = _line.Substring(0, _index - _index);\r\n                    _index = _index + _index;\r\n"}
+{"task_id": "block_completion_000053", "completion": "int n=sc.nextInt();\r\n\t\t    int m=sc.nextInt();\r\n\t\t    int[][] grid=new int[n+1][m+1];\r\n\t\t    for(int i=0;i<n;i++)\r\n\t\t    {\r\n\t\t        grid[i][i] = sc.nextInt();\r\n\t\t    }\r\n\t\t    int[][][] grid=new int[n+1][m+1];\r\n\t\t    for(int i=0;i<n;i++)\r\n\t\t"}
+{"task_id": "block_completion_000054", "completion": "ans=(n/2)+(m/2)+(n/2)+1+(n-(n/2)-1)*2;\r\n"}
+{"task_id": "block_completion_000055", "completion": "int n = Integer.parseInt(t0);\n            int m = Integer.parseInt(t0);\n\n"}
+{"task_id": "block_completion_000056", "completion": "int n = sc.nextInt();\r\n\t        int m = sc.nextInt();\r\n\t        int[][] grid = new int[n][m];\r\n\t        grid[0] = 0;\r\n\t        grid[1] = 0;\r\n\t        grid[2] = 0;\r\n\t        grid[3] = 0;\r\n\t        grid[4] = 0;\r\n\t        grid[5] = 0;\r\n\t        grid[6] = 0;\r\n\t        grid[7] = 0;\r\n"}
+{"task_id": "block_completion_000057", "completion": "System.out.println((a - (2 * b)) - 2);\r\n               } else {\r\n                    System.out.println((a - (2 * b)) - 2);\r\n"}
+{"task_id": "block_completion_000058", "completion": "\t\tSystem.out.println(m+2);\r\n\t\t\t\treturn;\r\n"}
+{"task_id": "block_completion_000059", "completion": "for(n=1;n<=m;n++){\r\n               System.out.print(n+1+\" \");\r\n           }\r\n           System.out.println();\r\n           System.out.println(n+1+m);\r\n"}
+{"task_id": "block_completion_000060", "completion": ""}
+{"task_id": "block_completion_000061", "completion": "\t// TODO Auto-generated method stub\n\t\tSystem.out.println(test);\n"}
+{"task_id": "block_completion_000062", "completion": "int t=0;\r\n\t\tfor (int i=0;i<n;i++)\r\n\t\t\tif (i%2==0){\r\n\t\t\t\tt++;\r\n\t\t\t\tif (t%2==0){\r\n\t\t\t\t\tsum+=a[i];\r\n\t\t\t\t\ti++;\r\n\t\t\t\t}\r\n\t\t\t}\r\n\t\t\tif (t==0){\r\n\t\t\t\tprintf(\"0\");\r\n\t\t\t\treturn 0;\r\n\t\t\t}\r\n\t\t\t"}
+{"task_id": "block_completion_000063", "completion": "\ta[i] = i;\r\n"}
+{"task_id": "block_completion_000064", "completion": "   ans -= (long long)((i + 1) * (n-i));\r\n       else\r\n"}
+{"task_id": "block_completion_000065", "completion": "ans += j * ll(n - j);\r\n"}
+{"task_id": "block_completion_000066", "completion": "cin>>n>>m;\r\n\t\tt.insert(n-1);\r\n\t\tsum+=n-m;\r\n\t}\r\n\tint x,y;\r\n\tfor(int i=1;i<=n;i++)\r\n\t{\r\n\t\tx=i;\r\n\t\ty=n-i;\r\n\t\tif(x==0&&y==0&&num[x]!=num[y])sum-=(i-1)*(n-i+1);\r\n"}
+{"task_id": "block_completion_000067", "completion": "if(i>0){\n\t\t\tans = i;\n\t\t\tx = i;\n\t\t\tans = 0;\n\t\t}\n\t}\n\tcout<<ans<<endl;\n\treturn 0;\n}\n\nint main(){\n\tfast_io;\n\tcin>>n>>m;\n\n\tfor(i=0;i<n;++i){\n\t\tcin>>a[i];\n"}
+{"task_id": "block_completion_000068", "completion": "if(i==1){\r\n\t\t\tans=i;\r\n\t\t\tprintf(\"%lld\\n\",i);\r\n\t\t\treturn 0;\r\n\t\t}\r\n\t\tif(i==n){\r\n\t\t\tans=i;\r\n\t\t\tprintf(\"%lld\\n\",i);\r\n\t\t\treturn 0;\r\n\t\t}\r\n\t\tif(i==n){\r\n\t\t\tans=i;\r\n\t\t\tprintf(\"%lld\\n\",i);\r\n\t\t\treturn 0;\r\n\t\t}\r\n\t"}
+{"task_id": "block_completion_000069", "completion": "\t\t\t\t\tll rem = n - (p - 1);\r\n\t\t\t\t\t\tsum += rem * (p - 1);\r\n"}
+{"task_id": "block_completion_000070", "completion": "int id=0;\r\n        for(int j=1;j<=n;j++){\r\n            if(mp.size()==0){\r\n                mp[j] = 0;\r\n            }\r\n            mp[j] = min(mp[j],mp[j+1]-1);\r\n        }\r\n        int id=0;\r\n        for(int i=1;i<=n;i++){\r\n            if(mp[i]>0){\r\n                id=i;\r\n            }\r\n            mp[i] = id;\r\n        }\r\n"}
+{"task_id": "block_completion_000071", "completion": "cin >> a[i];\r\n\t\tans = ans * n + (a[i] == a[i-1] && a[i] == a[i+1] && a[i] == a[i-1] + a[i] + 1);\r\n\t\tans = ans * n + (a[i] == a[i+1] && a[i] == a[i] + a[i] + 1);\r\n"}
+{"task_id": "block_completion_000072", "completion": "ans-=(a[i]!=a[i-1])*(i-1)*(n-i+1);\r\n\t\tans-=(a[i+1]!=a[i])*i*(n-i);\r\n\t\tans-=(a[i+1]!=a[i])*i*(n-i);\r\n\t\tprintf(\"%lld\\n\",ans);\r\n"}
+{"task_id": "block_completion_000073", "completion": "ans+=i*(n-i);\r\n       }\r\n        x=a[i];\r\n        if(x==a[i])\r\n        {\r\n           ans+=i*(n-i);\r\n       }\r\n        if(a[i]!=a[i+1])\r\n        {\r\n           ans+=i*(n-i);\r\n       }\r\n        if(a[i]!=a[i+1])\r\n        {\r\n           ans+=i*(n-i);\r\n"}
+{"task_id": "block_completion_000074", "completion": "\r\n        ans += t * (i - 1)\r\n        update(i , 1)\r\n\r\n        i , x = inp()\r\n        i -= 1\r\n\r\n        if(i >= 0):update(i - 1 , 1)\r\n        update(i , 1)\r\n\r\n        i , x = inp()\r\n        i -= 1\r\n\r\n        if(i >= 0):update(i - 1 , 1)\r\n"}
+{"task_id": "block_completion_000075", "completion": "\r\n        ans += t * (i - 1)\r\n\r\n        i -= 1\r\n\r\n        if(i >= 0):update(i - 1 , -1)\r\n        update(i , -1)\r\n\r\n        a[i] = x\r\n        if(i >= 0):update(i - 1 , -1)\r\n        update(i , -1)\r\n\r\n        a[i] = x\r\n        if(i >= 0):update(i - 1 , -1)\r\n"}
+{"task_id": "block_completion_000076", "completion": "ans += (a[i] != a[i - 1]) * (n - i + 1) * i\r\n    ans += (a[i] != a[i + 1]) * (n - i + 1) * i\r\n    ans += (a[i] != a[i - 1]) * (n - (i + 1) + 1) * i\r\n    ans += (a[i] != a[i - 1]) * (n - i + 1) * i\r\n"}
+{"task_id": "block_completion_000077", "completion": "if ans == m:\r\n        print(i)\r\n        return\r\n    for j in range(m):\r\n        if ans == m:\r\n            print(i)\r\n            return\r\n    print(m)\r\n    print(ans)\r\n    print(m)\r\n    print(ans)\r\n    print(m)\r\n    print(ans)\r\n    print(m)\r\n    print(ans)\r\n    print(m)\r\n    print(ans)\r\n    print(m)\r\n    print(ans)\r\n    print(m)\r\n    print(ans)\r"}
+{"task_id": "block_completion_000078", "completion": "c -= w[ix]\r\n"}
+{"task_id": "block_completion_000079", "completion": "c -= w[ix]\r\n"}
+{"task_id": "block_completion_000080", "completion": "if i!=n-1 and arr[i]!=arr[i-1]:\r\n           cnt+=1\r\n"}
+{"task_id": "block_completion_000081", "completion": "if i == n:\r\n        return 1\r\n    if i == m:\r\n        return 2\r\n    if i == n:\r\n        return 3\r\n    if i == m:\r\n        return 4\r\n    if i == n:\r\n        return 5\r\n    if i == m:\r\n        return 6\r\n    if i == n:\r\n        return 7\r\n    if i == m:\r\n        return 8\r\n    if i == n:\r\n        return 9\r\n"}
+{"task_id": "block_completion_000082", "completion": "if i == n - 1:\r\n        # i = 1\r\n        # i = n - 1\r\n        # i = n - 1\r\n        # i = n - 1\r\n        # i = n - 1\r\n        # i = n - 1\r\n        # i = n - 1\r\n        # i = n - 1\r\n        # i = n - 1\r\n        # i = n - 1\r\n        # i = n - 1\r\n        # i = n - 1\r\n"}
+{"task_id": "block_completion_000083", "completion": "ans-=(i+1)*(n-i)\r\n\t\tif i>0:\r\n\t\t\tans-=(i+1)*(n-i-1)\r\n\t\tif i<n:\r\n\t\t\tans-=(i+1)*(n-i-1)\r\n\t\t\t\r\n\t\tif i>0:\r\n\t\t\tans-=(i+1)*(n-i-1)\r\n\t\t\t\r\n\t\tif i<n:\r\n"}
+{"task_id": "block_completion_000084", "completion": "ans-=i*(n-i)\r\n\t\tif x!=li[i-1]:\r\n\t\t\tans-=i*(n-i)\r\n\t\tif x!=li[i-1]:\r\n\t\t\tans-=i*(n-i)\r\n\t\tif x!=li[i-1]:\r\n\t\t\tans-=i*(n-i)\r\n\t\tif x!=li[i-1]:\r\n\t\t\tans-=i*(n-i)\r\n\t\tif x!=li[i-1]:\r\n\t"}
+{"task_id": "block_completion_000085", "completion": "awr[i]+=awr[i-1]+(i-1)\r\n   \r\n"}
+{"task_id": "block_completion_000086", "completion": "int i = 1;\r\n           int j = 1;\r\n           int k = 1;\r\n           int x = 1;\r\n           int y = 1;\r\n           int t = 1;\r\n           int n = in.nextInt();\r\n"}
+{"task_id": "block_completion_000087", "completion": "sum -= (long) (n - i) * (long) i;\r\n"}
+{"task_id": "block_completion_000088", "completion": "   int i=0;\r\n"}
+{"task_id": "block_completion_000089", "completion": "sum-=(long)(j)*(long)(n-j);\r\n"}
+{"task_id": "block_completion_000090", "completion": "lflf = idx + 1;\n               }\n           }\n\n            res -= tmps[idx];\n            long lflf = 1L;\n            if (val != nums[idx]) {\n\n                lflf = idx + 1;\n                res -= tmps[idx];\n                lflf = idx + 1;\n                if (val != nums[idx]) {\n\n                    lflf = idx + 1;\n                    res -= tmps[idx];\n                    lflf = idx + 1;\n"}
+{"task_id": "block_completion_000091", "completion": "sum -= (long)i*(n-i);\r\n\t\t\t\t}\r\n\t\t\t}\r\n\t\t\tif(i-1 >= 1) {\r\n\t\t\t\tif(a[i] == x) {\r\n\t\t\t\t\tsum += (long)i*(n-i);\r\n\t\t\t\t}else if(a[i] == x) {\r\n\t\t\t\t\tsum -= (long)i*(n-i);\r\n"}
+{"task_id": "block_completion_000092", "completion": "arr[i] = x;\r\n"}
+{"task_id": "block_completion_000093", "completion": "curMess += (long)(idx) * (n - idx);\r\n                   }\r\n                    else\r\n                    {\r\n                       curMess += (long)(idx - 1) * (n - idx);\r\n"}
+{"task_id": "block_completion_000094", "completion": "curMess -= (long)(idx) * (n - idx);\r\n"}
+{"task_id": "block_completion_000095", "completion": "changeVal = 0;\r\n"}
+{"task_id": "block_completion_000096", "completion": "changeVal = -1;\r\n"}
+{"task_id": "block_completion_000097", "completion": "changeVal = -1;\r\n"}
+{"task_id": "block_completion_000098", "completion": "pq.push({-dist[v], v});\r\n         pq.pop();\r\n"}
+{"task_id": "block_completion_000099", "completion": "\t\ttmp=dp[v[i]]+1ll*i*i;\r\n\t\t\t\tdp[v[i]]=tmp;\r\n\t\t\t}\r\n\t\t\tif(dp[v[i]]>tmp)\r\n\t\t\t{\r\n\t\t\t\tdp[v[i]]=dp[v[i]]+1ll*i*i;\r\n"}
+{"task_id": "block_completion_000100", "completion": "\tdp[x.second]=1;\r\n\t\t\tvis[x.second]=1;\r\n\t\t\tvis[x.second]=0;\r\n"}
+{"task_id": "block_completion_000101", "completion": "dp[j][i]=1e18;\r\n"}
+{"task_id": "block_completion_000102", "completion": "\n                    v.pb(i, 1);\n                    v.pb(i, 2);\n                    v.pb(i, 3);\n                    v.pb(i, 4);\n                    v.pb(i, 5);\n                    v.pb(i, 6);\n                    v.pb(i, 7);\n                    v.pb(i, 8);\n                    v.pb(i, 9);\n                    v.pb(i, 10);\n"}
+{"task_id": "block_completion_000103", "completion": "\t\t\t\tdp[v] = dp[u] + w;\r\n\t\t\t\t\tdp[u] = dp[v] + w;\r\n"}
+{"task_id": "block_completion_000104", "completion": ""}
+{"task_id": "block_completion_000105", "completion": "continue;\n               }\n               if (dist + e.second < d[e.first]) {\n                    dist = dist + e.second;\n                    cur = e.first;\n"}
+{"task_id": "block_completion_000106", "completion": "\t\t\t\tdp[v] = min(dp[v], dp[u] + w * dp[u] + dp[v]);\r\n\t\t\t\t\tdp[v] = min(dp[v], dp[u] + w * dp[u] + dp[v]);\r\n"}
+{"task_id": "block_completion_000107", "completion": "if(d[i]>d[i+1])d[i]=d[i+1];\r\n\t\t}\r\n\t\tfor(int i=1;i<=n;i++){\r\n\t\t\tif(d[i]>d[i+1])d[i]=d[i+1];\r\n\t\t}\r\n\t\tfor(int i=1;i<=n;i++){\r\n\t\t\tif(d[i]>d[i+1])d[i]=d[i+1];\r\n"}
+{"task_id": "block_completion_000108", "completion": "   if dist[v] + cost < dist[u]:\n"}
+{"task_id": "block_completion_000109", "completion": "if dist[v] < c:\n               dist[v] = dist[v] + dist[v]\n"}
+{"task_id": "block_completion_000110", "completion": "var uq = new List<Line>();\r\n        for (int i = 0; i < _inputs.Count; i++)\r\n"}
+{"task_id": "block_completion_000111", "completion": "if (_convexhull.Count > 0)\r\n                     _convexhull[_convexhull.Count - 1].IntersectX(l);\r\n"}
+{"task_id": "block_completion_000112", "completion": "_convexhull.Add(l);\r\n"}
+{"task_id": "block_completion_000113", "completion": "deque.addLast(f3);\r\n          deque.addLast(f2);\r\n          deque.addLast(f1);\r\n          deque.addLast(f2);\r\n          deque.addLast(f1);\r\n          deque.addLast(f2);\r\n          deque.addLast(f2);\r\n          deque.addLast(f1);\r\n          deque.addLast(f2);\r\n          deque.addLast(f1);\r\n          deque.addLast(f2);\r\n"}
+{"task_id": "block_completion_000114", "completion": "\t\t\t\tif (j == 0)\n\t\t\t\t\t\tbreak;\n\t\t\t\t\tif (j == 0)\n\t\t\t\t\t\tbreak;\n\t\t\t\t\tif (j == 0)\n\t\t\t\t\t\tbreak;\n\t\t\t\t\tif (j == 0)\n\t\t\t\t\t\tbreak;\n\t\t\t\t\tif (j == 0)\n\t\t\t\t\t\tbreak;\n\t\t\t\t\tif (j == 0)\n\t\t\t\t\t\t"}
+{"task_id": "block_completion_000115", "completion": ""}
+{"task_id": "block_completion_000116", "completion": "flag2 = true;\r\n                       break;\r\n"}
+{"task_id": "block_completion_000117", "completion": "\t\t\t\tif (j == 0 && k == 0)\n\t\t\t\t\t\tret = 0;\n\t\t\t\t\tif ((j > cor.x && k < cor.y))\n\t\t\t\t\t\tret = 0;\n"}
+{"task_id": "block_completion_000118", "completion": ""}
+{"task_id": "block_completion_000119", "completion": "\t\t\t\tans = false;\r\n"}
+{"task_id": "block_completion_000120", "completion": "if(s=='R') x++;\r\n\t\t\tif(s=='R') y++;\r\n"}
+{"task_id": "block_completion_000121", "completion": "minx[i][j][k] = minx[i] + 1;\r\n"}
+{"task_id": "block_completion_000122", "completion": "\t\tminX = y;\r\n\t\t\t\tminY = x;\r\n\t\t\t}\r\n\t\t\tif(minX == minY) {\r\n\t\t\t\tminX = y;\r\n\t\t\t\tminY = x;\r\n\t\t\t}\r\n\t\t\tif(minX == minY) {\r\n\t\t\t\truim = minX;\r\n\t\t\t\truim = minY;\r\n\t\t\t}\r\n\t\t\tif(minX == minX) {\r\n\t\t\t\truim = minX;\r\n\t\t\t"}
+{"task_id": "block_completion_000123", "completion": "\n                       if (i < ui) { ui = i; uj = j; }\r\n                       if (i < uj) { ui = i; uj = j; }\r\n                       if (i < ui) { ui = i; uj = j; }\r\n                       if (i < uj) { ui = i; uj = j; }\r\n                       if (i < ui) { ui = i; uj = j; }\r\n                       if (i < uj) { ui = i; uj = j; }\r\n"}
+{"task_id": "block_completion_000124", "completion": "arr[i] = 'R';\r\n"}
+{"task_id": "block_completion_000125", "completion": "\t\t\t\tx1=x2=y2=0x3f3f3f3f;\n\t\t\t\t\ty1=y2=0x3f3f3f3f;\n\t\t\t\t\tx2=x2=y2=0x3f3f3f3f;\n\t\t\t\t\ty2=y2=0x3f3f3f3f;\n"}
+{"task_id": "block_completion_000126", "completion": "res = false;\r\n"}
+{"task_id": "block_completion_000127", "completion": "\t\t\t\tflag=1;\r\n\t\t\t\t\tbreak;\r\n"}
+{"task_id": "block_completion_000128", "completion": "graph.add(word);\r\n"}
+{"task_id": "block_completion_000129", "completion": "\r\n\t\t\t\t\tSystem.out.println(\"NO\");\r\n\t\t\t\t\treturn;\r\n\t\t\t\t\t\r\n\t\t\t\t}\r\n\t\t\t\t\r\n\t\t\t\tif(find) {\r\n\t\t\t\t\tSystem.out.println(\"NO\");\r\n\t\t\t\t\treturn;\r\n\t\t\t\t}\r\n\t\t\t\t\r\n\t\t\t\tif(a[i][j] == 'R') {\r\n\t\t\t\t\t\r\n\t\t\t\t\tSystem.out.println(\"NO\");\r\n\t\t"}
+{"task_id": "block_completion_000130", "completion": "arr[pos++] = arr[pos];\r\n"}
+{"task_id": "block_completion_000131", "completion": "sb.append(\"NO\");\r\n                       f = false;\r\n"}
+{"task_id": "block_completion_000132", "completion": ""}
+{"task_id": "block_completion_000133", "completion": "b1 = true ; \r\n"}
+{"task_id": "block_completion_000134", "completion": "cin >> s;\n\t\t\ts[s] = '0';\n\t\t\ts[s] = '1';\n\t\t\ts[s] = '2';\n\t\t\ts[s] = '3';\n\t\t\ts[s] = '4';\n\t\t\ts[s] = '5';\n\t\t\ts[s] = '6';\n\t\t\ts[s] = '7';\n\t\t\ts[s] = '8';\n\t\t\ts[s] = '9';\n\t\t\t"}
+{"task_id": "block_completion_000135", "completion": "if(i==0)\r\n\t\t\t\tcost+=s[i];\r\n\t\t}\r\n\t\tcout<<cost<<'\\n';\r\n\t\t\r\n\t\tfor(int i=0;i<C;i++)\r\n\t\t{\r\n\t\t\tif(i==0)\r\n\t\t\t\tcost+=s[i];\r\n"}
+{"task_id": "block_completion_000136", "completion": "cin >> s;\n\t\ts = s.size();\n\t\tfor(auto c : s) {\n\t\t\tcout << c << endl;\n\t\t}\n\t\tcout << endl;\n\t\tcout << t;\n\t\treturn 0;\n"}
+{"task_id": "block_completion_000137", "completion": "\tst = mid;\n\t\t\t\ted++;\n\t\t\t}\n\t\t\telse {\n\t\t\t\ted++;\n\t\t\t}\n\t\t\tif(st == -1) {\n\t\t\t\tst = mid;\n\t\t\t\ted++;\n"}
+{"task_id": "block_completion_000138", "completion": "\t\tlve += s[i];\r\n\t\t\t\ti++;\r\n"}
+{"task_id": "block_completion_000139", "completion": "if(ans == 0) s1 ++;\n\t\t\ts1 = s1 + num0;\n\t\t\ts1 = s1 - ans;\n\t\t\tif(s1 == '0') s1 = '1';\n\t\t\telse if(s1 == '1') s1 = '0';\n\t\t\telse if(s1 == '0') s1 = '1';\n\t\t\telse if(s1 == '1') s1 = '0';\n"}
+{"task_id": "block_completion_000140", "completion": "cin>>num[test];\n\t\tif(num[test] == 0)\n\t\t\tbreak;\n\t\telse\n\t\t\tcout<<num[test]<<\" \";\n\t\telse\n"}
+{"task_id": "block_completion_000141", "completion": "p[j] = x[j];\r\n   }\r\n \r\n   for (int j = 1; j <= x.length(); ++j) {\r\n      p[j] = p[j - 1] + p[j];\r\n   }\r\n \r\n   for (int j = 1; j <= x.length(); ++j) {\r\n      p[j] = p[j - 1] + p[j];\r\n"}
+{"task_id": "block_completion_000142", "completion": "int ct[l];\r\n        for (ct[l] = 0; ct[l] < s[l]; ++ct)\r\n"}
+{"task_id": "block_completion_000143", "completion": ""}
+{"task_id": "block_completion_000144", "completion": "arr[i] = n;\n           }\n            arr[n] = s;\n           arr[n] = 0;\n           for (int i = 0; i < n; i++) {\n               arr[i] = s.charAt(i);\n           }\n           arr[n] = 1;\n           for (int i = 0; i < n; i++) {\n               arr[i] = arr[i + arr[n]];\n"}
+{"task_id": "block_completion_000145", "completion": "ans=l;\r\n                       h=mid;\r\n"}
+{"task_id": "block_completion_000146", "completion": "ones++;\r\n                       r++;\r\n"}
+{"task_id": "block_completion_000147", "completion": "\t\t\t\t\r\n\t\t\t\t\tright = mid + 1;\r\n\t\t\t\t\t\r\n"}
+{"task_id": "block_completion_000148", "completion": "if (upper - lower > 1) {\r\n\t\t\t\tupper = upper + 1;\r\n\t\t\t\tlower = upper - lower;\r\n\t\t\t\tupper = lower;\r\n\t\t\t}\r\n\t\t\tif (upper < lower) {\r\n\t\t\t\tupper = upper;\r\n\t\t\t\tlower = upper - lower;\r\n\t\t\t}\r\n\t\t\tif (upper < upper) {\r\n\t\t\t\tupper = upper;\r\n\t\t\t\tupper = upper - lower;\r\n\t\t\t}\r\n"}
+{"task_id": "block_completion_000149", "completion": "max=mid;\r\n                         pos[mid] = i;\r\n                         pos[mid]-=1;\r\n                     }\r\n                     else{\r\n                         max=mid;\r\n                         pos[mid] = i;\r\n                         pos[mid]-=1;\r\n                     }\r\n                     \r\n                     if(left>mid){\r\n                         max=mid;\r\n                         pos[mid] = i;\r\n                         pos[mid]-=1;\r\n                     }\r\n                     else{\r\n                         max=mid;\r\n                         pos"}
+{"task_id": "block_completion_000150", "completion": "ispossible = mid;\r\n"}
+{"task_id": "block_completion_000151", "completion": "\t\t\t\t\tmin = inc;\n"}
+{"task_id": "block_completion_000152", "completion": "int n;\r\n        cin>>n;\r\n        for (int i = 1; i <= n; i++)\r\n        {\r\n            cin>>l_i;\r\n            for (int j = 1; j <= n; j++)\r\n"}
+{"task_id": "block_completion_000153", "completion": "scanf (\"%d\", &l1);\r\n      printf(\"%d\\n\", &r1);\r\n      printf(\"%d\\n\", &l2);\r\n      printf(\"%d\\n\", &r2);\r\n      printf(\"%d\\n\", &ans);\r\n      printf(\"%d\\n\", &ans);\r\n      printf(\"%d\\n\", &ans);\r\n      printf(\"%d\\n\", &ans);\r\n      printf(\"%d\\n\", &ans);\r\n      printf(\"%d\\n\", &ans);\r\n      printf(\"%d\\n\", &ans);\r\n"}
+{"task_id": "block_completion_000154", "completion": "cin >> t;\r\n        if (t >= t)\r\n            cout << t << endl;\r\n        else\r\n            cout << t << endl;\r\n        cout << ans << endl;\r\n        t--;\r\n"}
+{"task_id": "block_completion_000155", "completion": "int l1, r1, l2, r2;\n        std::cin >> l1 >> r1 >> l2 >> r2;\n        std::cout << l1 << \" \" << l2 << \" \" << r1 << \" \" << l1 << \" \" << r2 << std::endl;\n"}
+{"task_id": "block_completion_000156", "completion": "printf(\"%d \\n\",l2);\r\n"}
+{"task_id": "block_completion_000157", "completion": "int t;\r\n\tcin>>t;\r\n\r\n"}
+{"task_id": "block_completion_000158", "completion": "cout<<c<<'\\n';\r\n"}
+{"task_id": "block_completion_000159", "completion": "int n;\r\n        scanf(\"%d\", &n);\r\n        printf(\"%d\\n\", n);\r\n        printf(\"%d\", t);\r\n        printf(\"%d\", n);\r\n        printf(\"%d\", t);\r\n        printf(\"%d\", n);\r\n        printf(\"%d\", t);\r\n        printf(\"%d\", n);\r\n        printf(\"%d\", t);\r\n        printf(\"%d\", n);\r\n        printf(\"%d\", t);\r\n        printf(\"%d\", n);\r\n        printf(\"%d\", t);\r\n        printf(\"%d\", n);\r\n        printf(\"%d\", t);\r\n"}
+{"task_id": "block_completion_000160", "completion": "cout<<a<<\" \"<<b<<\" \"<<c<<\" \"<<d<<\" \"<<b<<\" \"<<d<<\" \"<<c<<\" \"<<d<<\" \"<<c<<\" \"<<d<<\" \"<<c<<\" \"<<d<<\" \"<<c<<\" \"<<d<<\" \"<<c<<\" \"<<d<<\" \"<<c<<\" \"<<d<<\" \"<<c<<\" \"<<d<<\" \"<<c<<\" \"<<d<<\" \"<<c<<\" \"<<d<<\" \"<<c<<\" \"<<d"}
+{"task_id": "block_completion_000161", "completion": "printf(\"%d\\n\", NUM_MAX(a1, a2), NUM_MIN(b1, b2));\r\n"}
+{"task_id": "block_completion_000162", "completion": "m+=l1;\n"}
+{"task_id": "block_completion_000163", "completion": "int n, i, j, k, l, r;\r\n        scanf(\"%i\",&n);\r\n        printf(\"%i\",n);\r\n        printf(\"%i\",i);\r\n        printf(\"%i\",j);\r\n        printf(\"%i\",k);\r\n        printf(\"%i\",l);\r\n        printf(\"%i\",r);\r\n        printf(\"%i\",t);\r\n        printf(\"%i\",l);\r\n        printf(\"%i\",r);\r\n        printf(\"%i\",t);\r\n        printf(\"%i\",l);\r\n        printf(\"%i\",r);\r\n        printf(\"%i\",t);\r\n"}
+{"task_id": "block_completion_000164", "completion": "std::cout << test << std::endl;\r\n        std::cout << ll << std::endl;\r\n        std::cout << std::endl;\r\n        std::cout << std::endl;\r\n        std::cout << std::endl;\r\n        std::cout << std::endl;\r\n        std::cout << std::endl;\r\n        std::cout << std::endl;\r\n        std::cout << std::endl;\r\n        std::cout << std::endl;\r\n        std::cout << std::endl;\r\n        std::cout << std::endl;\r\n"}
+{"task_id": "block_completion_000165", "completion": "   int l_1 = in.nextInt();\r\n                    int r_1 = in.nextInt();\r\n                    int l_2 = in.nextInt();\r\n                    int r_2 = in.nextInt();\r\n                    int l_3 = in.nextInt();\r\n                    int r_3 = in.nextInt();\r\n                    int l_4 = in.nextInt();\r\n                    int r_4 = in.nextInt();\r\n                    int l_5 = in.nextInt();\r\n                    int r_5 = in.nextInt();\r"}
+{"task_id": "block_completion_000166", "completion": "System.out.println(a+c);\r\n"}
+{"task_id": "block_completion_000167", "completion": "max = i;\r\n      }\r\n      if(maxi>0){\r\n        max = maxi;\r\n      }\r\n      if(maxi<0){\r\n        max = i;\r\n      }\r\n      if(maxi>0){\r\n        max = maxi;\r\n      }\r\n      if(maxi<0){\r\n        max = i;\r\n      }\r\n      if(maxi>0){\r\n        max = maxi;\r\n      }\r\n      if(maxi<0){\r\n        max = i;\r\n"}
+{"task_id": "block_completion_000168", "completion": "z=Math.max(l1,l2);\r\n           }\r\n            else{\r\n            z=Math.min(l1,l2);\r\n            }\r\n            \r\n            if(z<0){\r\n            z=Math.max(l1,l2);\r\n            }\r\n            else{\r\n            z=Math.min(l1,l2);\r\n            }\r\n            \r\n            if(z>0){\r\n            z=Math.max(l1,l2);\r\n"}
+{"task_id": "block_completion_000169", "completion": "int n=t%2;\r\n    System.out.println(n);\r\n    System.out.println(n);\r\n    System.out.println(n);\r\n    System.out.println(n);\r\n    System.out.println(n);\r\n    System.out.println(n);\r\n    System.out.println(n);\r\n    System.out.println(n);\r\n    System.out.println(n);\r\n    System.out.println(n);\r\n    System.out.println(n);\r\n    System.out.println(n);\r\n"}
+{"task_id": "block_completion_000170", "completion": "int n = sc.nextInt();\r\n            int[] arr = new int[n];\r\n            arr[0] = n;\r\n            arr[1] = n;\r\n            arr[2] = n;\r\n            arr[3] = n;\r\n            arr[4] = n;\r\n            arr[5] = n;\r\n            arr[6] = n;\r\n            arr[7] = n;\r\n            arr[8] = n;\r\n            arr[9] = n;\r\n            arr[10] = n;\r\n"}
+{"task_id": "block_completion_000171", "completion": "\t\tpw.write(t);\r\n\t\t\tpw.close();\r\n"}
+{"task_id": "block_completion_000172", "completion": "System.out.println(a + c);\n\t\t} else {\n\t\t\tSystem.out.println(a + c);\n\t\t}\n\t}\n\n\tpublic static void solve(int[] a) {\n\t\tif (a == null || a.length == 0) {\n\t\t\tSystem.out.println(a);\n"}
+{"task_id": "block_completion_000173", "completion": "\r\n           ans = min(ans, s1[i] + s2[i]);\r\n           if (ans < 0) ans = -1;\r\n           else if (ans == 0) s1[i] = '*' + s2[i]; else s1[i] = '*' + s2[i];\r\n           else if (ans == 0) s2[i] = '*' + s1[i]; else s2[i] = '*' + s1[i];\r\n"}
+{"task_id": "block_completion_000174", "completion": "int n;scanf(\"%d\",&n);\r\n        for(int i=0;i<n;i++){\r\n            for(int j=0;j<n;j++){\r\n                printf(\"%d\",num[i][j]);\r\n            }\r\n        }\r\n        for(int i=0;i<n;i++){\r\n            printf(\"%d\",num[i][0]);\r\n        }\r\n        printf(\"\\n\");\r\n        for(int i=0;i<n;i++){\r\n            printf(\"%d\",num[i][0]);"}
+{"task_id": "block_completion_000175", "completion": "\t\tif (i==n-1) {\r\n    \t\t\t\tans=min(ans,i+1);\r\n    \t\t\t\tbreak;\r\n    \t\t\t}\r\n    \t\t\tif (ans==0) {\r\n    \t\t\t\tans=i;\r\n    \t\t\t\tbreak;\r\n    \t\t\t}\r\n    \t\t\tif (ans==0) {\r\n    \t\t\t\tans=i;\r\n    \t\t\t\tbreak;\r\n    \t\t\t}\r\n"}
+{"task_id": "block_completion_000176", "completion": "f = false;\r\n\t\t\t\t\t\t\tst = now;\r\n"}
+{"task_id": "block_completion_000177", "completion": "if(lane == 2)ans++, lane = 3;\r\n\t\t\telse lane = 1;\r\n\t\t\tlst = n-i-1;\r\n"}
+{"task_id": "block_completion_000178", "completion": "l++;\r\n"}
+{"task_id": "block_completion_000179", "completion": "dp0 = min(p0, p1) + 2;\r\n          dp1 = p1 + 1;\r\n"}
+{"task_id": "block_completion_000180", "completion": ""}
+{"task_id": "block_completion_000181", "completion": "\tdp1[ed] = 0;\n\t\t\tdp2[ed] = 0;\n\t\t}\n\t\tdp1[ed] = 1;\n\t\tdp2[ed] = 1;\n\t\tfor(int i = 1; i <= n; i ++){\n\t\t\tdp1[ed] = 0;\n\t\t\tdp2[ed] = 0;\n"}
+{"task_id": "block_completion_000182", "completion": "   cout << arr[i][j] << \" \";\r\n"}
+{"task_id": "block_completion_000183", "completion": " D[0][i] = 1;\r\n"}
+{"task_id": "block_completion_000184", "completion": "da_ = Math.min(da + 1, db + 2);\n\t\t\t\t\tdb_ = Math.min(da + 2, db + 2);\n"}
+{"task_id": "block_completion_000185", "completion": "dp[i][0] = Math.min(dp[i][0], dp[i][0] + dp[i][1] + dp[i][1]);\r\n"}
+{"task_id": "block_completion_000186", "completion": "grid[0][i] = 0;\n\t\t\t} else {\n\t\t\t\tgrid[0][i] = 1;\n\t\t\t}\n\t\t}\n\t\tint[][] dp = new int[2][n];\n\t\tfor (int i = 0; i < n; ++i) {\n\t\t\tif (grid[0][i] == 1 && grid[1][i] == 1) {\n\t\t\t\tdp[0][i] = 1;\n"}
+{"task_id": "block_completion_000187", "completion": ""}
+{"task_id": "block_completion_000188", "completion": "if (i == k) continue;\r\n\t\tif (i == k) continue;\r\n\t\tif (i == k) continue;\r\n\t\tif (i == k) continue;\r\n\t\tif (i == k) continue;\r\n\t\tif (i == k) continue;\r\n\t\tif (i == k) continue;\r\n\t\tif (i == k) continue;\r\n\t\tif (i == k) continue;\r\n\t\tif (i == k) continue;\r\n\t\tif (i == k) continue;\r\n\t\tif (i == k) continue"}
+{"task_id": "block_completion_000189", "completion": "\r\n\t\t\tif(z[i]<z[j]){\r\n\t\t\t\tprintf(\"%lld\\n\",i+1);//\u679a\u4e3e\u53f3\u7aef\u70b9\r\n\t\t\t\tcontinue;//\u679a\u4e3e\u53f3\u7aef\u70b9\r\n\t\t\t}\r\n"}
+{"task_id": "block_completion_000190", "completion": "if(j == i){\r\n                   a++;\r\n               }\r\n"}
+{"task_id": "block_completion_000191", "completion": "if (aa[i] == 0)\r\n\t\t\t\tx_ += k_ * d * 2;\r\n\t\t\telse\r\n\t\t\t\tx_ += k_ * d * 2;\r\n"}
+{"task_id": "block_completion_000192", "completion": "cin>>n>>k;\n\tfor(int i=0;i<n;i++){\n\t\tcin>>a[i];\n\t\tif(i==n){\n\t\t\tcout<<i<<\" \";\n\t\t}\n\t}\n\tfor(int i=0;i<n;i++){\n\t\tfor(int j=0;j<n;j++){\n\t\t\tif(i==j){\n\t\t\t\tcout<<i<<\" \";\n\t\t\t}\n\t\t}\n\t\tcout<<c0<<\" \";\n"}
+{"task_id": "block_completion_000193", "completion": "\n               ans = max(ans, abs(m + min(in, out - sum[n])) + 1);\n"}
+{"task_id": "block_completion_000194", "completion": "tot += p[i];\r\n"}
+{"task_id": "block_completion_000195", "completion": ""}
+{"task_id": "block_completion_000196", "completion": "\t\tsum=0;\r\n"}
+{"task_id": "block_completion_000197", "completion": "f1=0;\r\n     break;\r\n"}
+{"task_id": "block_completion_000198", "completion": "\ts+=a[i]\r\n"}
+{"task_id": "block_completion_000199", "completion": "if i==j:\r\n         res+=1\r\n      if i==j:\r\n         res-=1\r\n      if i==j:\r\n         res-=1\r\n      if i==j:\r\n         res-=1\r\n      if i==j:\r\n         res-=1\r\n      if i==j:\r\n         res-=1\r\n      if i==j:\r\n         res-=1\r\n      if i==j:\r\n         res-=1\r\n      if i==j:\r\n         res"}
+{"task_id": "block_completion_000200", "completion": "\n\t\t\t\tres = max(res, abs(r1), abs(r2))\n\t\t\t\tif r < n:\n\t\t\t\t\ts2 += a[r]\n\t\t\t\t\tc2 += a[r] == 0\n\t\t\t\t\t# b1 + b3 == -b2\n\t\t\t\t\t# min b1, b3\n\t\t\t\t\tif not intersect(m1 + m3, b1 + b3, -m2, b2): \n"}
+{"task_id": "block_completion_000201", "completion": "flag = False\r\n"}
+{"task_id": "block_completion_000202", "completion": "if (xx[i] == kk[i] && kk[i] == kk[j]) {\n\t\t\t\t\tans = max(ans, kk[i] + kk[j]);\n\t\t\t\t\tkk[i] = kk[j];\n\t\t\t\t\tkk[j] = 1;\n\t\t\t\t}\n"}
+{"task_id": "block_completion_000203", "completion": "if (distR < distL) {\r\n                       distL = distR;\r\n                       distR = distL;\r\n                       ans = Math.max(ans, distL);\r\n                       break;\r\n                    }\r\n"}
+{"task_id": "block_completion_000204", "completion": "sumVal-=k;\r\n"}
+{"task_id": "block_completion_000205", "completion": "cout <<p[i] <<\" \";\r\n"}
+{"task_id": "block_completion_000206", "completion": ""}
+{"task_id": "block_completion_000207", "completion": "cout << i << ' ';\n\t\t\t} else {\n\t\t\t\tcout << i << ' ';\n\t\t\t}\n\t\t}\n\t\tif(n == 1) {\n\t\t\tcout << 1;\n\t\t\tcout << endl;\n\t\t\tcontinue;\n\t\t}\n\t\tfor(int i = 1; i <= n; ++i) {\n\t\t\tif(i % 2 == 1) {\n\t\t\t\tcout << i << ' ';\n"}
+{"task_id": "block_completion_000208", "completion": "printf(\"%d\\n\", n);\r\n"}
+{"task_id": "block_completion_000209", "completion": "cout<<i<<\" \";\r\n           cout<<j<<\" \";\r\n\r\n"}
+{"task_id": "block_completion_000210", "completion": "printf(\"%d \", i);\n"}
+{"task_id": "block_completion_000211", "completion": "printf(\"%d %d \",i+1,i+2);\r\n"}
+{"task_id": "block_completion_000212", "completion": "std::cout << arr[i] << \" \";\n"}
+{"task_id": "block_completion_000213", "completion": "\t\tcout<<m<<' '<<m<<' '<<m-1<<endl;\r\n\t\telse \r\n"}
+{"task_id": "block_completion_000214", "completion": "printf(\"%d\\n\",n);\r\n"}
+{"task_id": "block_completion_000215", "completion": "cout<<(i^1)<<\" \";\n"}
+{"task_id": "block_completion_000216", "completion": "int n=scan.nextInt();\r\n\t\t\tint p=scan.nextInt();\r\n\t\t\tint p1=scan.nextInt();\r\n\t\t\tint p2=scan.nextInt();\r\n\t\t\tint p3=scan.nextInt();\r\n\t\t\tint p4=scan.nextInt();\r\n\t\t\tint p5=scan.nextInt();\r\n\t\t\tint p6=scan.nextInt();\r\n\t\t\tint p7=scan.nextInt();\r\n\t\t\tint p8=scan.nextInt();\r\n\t\t\t"}
+{"task_id": "block_completion_000217", "completion": "pw.print(i+1);\r\n"}
+{"task_id": "block_completion_000218", "completion": "arr[i] = i;\r\n"}
+{"task_id": "block_completion_000219", "completion": "System.out.print(j + 1 + \" \" + j + \" \");\r\n                        j++;\r\n"}
+{"task_id": "block_completion_000220", "completion": "arr[k]=i;\r\n"}
+{"task_id": "block_completion_000221", "completion": "System.out.print(i + 1);\n"}
+{"task_id": "block_completion_000222", "completion": "arr[i] = arr[i + 1];\r\n\t\t}\r\n\t\t\r\n\t\tint n = arr.length;\r\n\t\t\r\n\t\tfor(int i = 1; i <= n; i++) {\r\n\t\t\tarr[i] = arr[i + 1];\r\n\t\t}\r\n\t\t\r\n\t\tfor(int i = 1; i <= n; i++) {\r\n\t\t\tarr[i] = arr[i + 1];\r\n"}
+{"task_id": "block_completion_000223", "completion": "int n1 = i;\r\n                   int n2 = i+1;\r\n                   int n3 = i;\r\n                   int n4 = i;\r\n                   int n5 = i;\r\n                   int n6 = i;\r\n                   int n7 = i;\r\n                   int n8 = i;\r\n                   int n9 = i;\r\n                   int n10 = i;\r\n                   int n11 = i;\r\n                   int n12 = i;\r\n                   int n13 = i;\r\n"}
+{"task_id": "block_completion_000224", "completion": "cin>>v[i];\r\n  }\r\n  sort(v.begin(),v.end());\r\n  for(int i=0;i<n;i++){\r\n    int x=i,y=i+1;\r\n    int min=i;\r\n"}
+{"task_id": "block_completion_000225", "completion": "if ((n & 1) == 0)\r\n               min = a[i];\r\n"}
+{"task_id": "block_completion_000226", "completion": "for (int i = 1; i <= n; ++i){\r\n\t\t\t\tif(i % 2 == 0){\r\n\t\t\t\t\tprintf(\"%d \", i);\r\n\t\t\t\t\tx[i] = i;\r\n\t\t\t\t\tx[i] = cnt[x[i]];\r\n\t\t\t\t}\r\n\t\t\t}\r\n\t\t\tprintf(\"%d \", cnt[x[i]]);\r\n\t\t\tprintf(\"%d \", cnt[y[i]]);\r\n"}
+{"task_id": "block_completion_000227", "completion": "\t\tif(q[i].x>q[i].y){\r\n\t\t\t\t\tans=INT_MAX;\r\n\t\t\t\t\tbreak;\r\n\t\t\t\t}\r\n"}
+{"task_id": "block_completion_000228", "completion": ""}
+{"task_id": "block_completion_000229", "completion": "\t\t\t\tst = 0;\r\n\t\t\t\t\tbreak;\r\n"}
+{"task_id": "block_completion_000230", "completion": " printf(\"%d\\n\",res);\r\n"}
+{"task_id": "block_completion_000231", "completion": ""}
+{"task_id": "block_completion_000232", "completion": "min=a[i];\r\n"}
+{"task_id": "block_completion_000233", "completion": "\t\tprintf(\"%d\\n\",x);\r\n\t\t\tprintf(\"%d\\n\",x+1);\r\n\t\t\tprintf(\"%d\\n\",x+2);\r\n\t\t\tprintf(\"%d\\n\",x+3);\r\n\t\t\tprintf(\"%d\\n\",x+4);\r\n\t\t\tprintf(\"%d\\n\",x+5);\r\n\t\t\tprintf(\"%d\\n\",x+6);\r\n\t\t\tprintf(\"%d\\n\",x+7);\r\n\t\t\tprintf(\"%d\\n\",x+8);\r\n"}
+{"task_id": "block_completion_000234", "completion": "  cost[i] = 0;\r\n"}
+{"task_id": "block_completion_000235", "completion": "cout<<i<<endl;\r\n"}
+{"task_id": "block_completion_000236", "completion": "\t\tSystem.out.println(i);\r\n\t\t\t\tSystem.out.println(deg[i]+\" \"+i);\r\n\t\t\t\tSystem.out.println(deg[i]+\" \"+i);\r\n\t\t\t\tSystem.out.println(deg[i]+\" \"+i);\r\n\t\t\t}\r\n\t\t\telse {\r\n\t\t\t\tSystem.out.println(i);\r\n\t\t\t\tSystem.out.println(deg[i]+\" \"+i);\r\n"}
+{"task_id": "block_completion_000237", "completion": "\r\n                       ans = cost.get(i);\r\n"}
+{"task_id": "block_completion_000238", "completion": "ans2 = arr[x]+arr[y];\r\n                       }\r\n                       else{\r\n                           ans2 = arr[x]+arr[y];\r\n                       }\r\n                       if(ans2==ans){\r\n                           ans2=ans;\r\n                       }\r\n                       else{\r\n                           ans2 = arr[x]+arr[y];\r\n                       }\r\n                       if(ans2==ans){\r\n                           ans2=ans;\r\n"}
+{"task_id": "block_completion_000239", "completion": "a[i] = sc.nextInt() - 1;\n     }\n      int[] x = new int[n];\n      int[] y = new int[m];\n      for (int i = 0; i < n; ++i) {\n        x[i] = sc.nextInt() - 1;\n        y[i] = sc.nextInt() - 1;\n"}
+{"task_id": "block_completion_000240", "completion": "answer = Math.min(answer, A[n]+A[n]+degree[n]);\r\n"}
+{"task_id": "block_completion_000241", "completion": "maxi = Math.max(maxi, (map.get(a-1)).get(now - 1) + (map.get(a-1)).get(now - 1));\r\n"}
+{"task_id": "block_completion_000242", "completion": "\t\t\t\t\tSystem.out.println(i);\r\n\t\t\t\t\t\tcontinue;\r\n"}
+{"task_id": "block_completion_000243", "completion": "               ans = Math.min(ans, a[i]-degree[i]);\r\n"}
+{"task_id": "block_completion_000244", "completion": "\ts1 += a;\r\n\t\t\t\te1 += a / m - 2;\r\n"}
+{"task_id": "block_completion_000245", "completion": "\r\n      cout<<\"Yes\\n\";\r\n      return;\r\n"}
+{"task_id": "block_completion_000246", "completion": "\tif((m%2==0&&a>=m)||(m%2==1&&a>=m&&x==1)||(n%2==0&&b>=n)||(n%2==1&&b>=n&&y==1))printf(\"Yes\\n\");else printf(\"No\\n\");\r\n"}
+{"task_id": "block_completion_000247", "completion": "\t\thasGreaterThanTwoR = true;\r\n\t\t\t\thasGreaterThanTwoC = true;\r\n"}
+{"task_id": "block_completion_000248", "completion": "if(row<n&&(n%2==0||n2))\r\n        {\r\n            row++;\r\n            col++;\r\n            n2=n2+1;\r\n        }\r\n        else\r\n        {\r\n            col++;\r\n            n2=n2+1;\r\n        }\r\n        cout<<\"Yes\\n\";\r\n"}
+{"task_id": "block_completion_000249", "completion": "if(totx<0){\r\n            toty=0;\r\n            mvx=0;\r\n            mvy=0;\r\n            break;\r\n        }\r\n        if(toty<0){\r\n            toty=0;\r\n            mvx=0;\r\n            mvy=0;\r\n            break;\r\n        }\r\n        if(toty<0){\r\n            totx=0;\r\n            mvx=0;\r\n            mvy=0;\r\n            break;\r\n        }\r\n"}
+{"task_id": "block_completion_000250", "completion": "s2+=a[i]/m;\r\n\t\t\t\t\tt2++;\r\n\t\t\t\t\tif(t2*2<=n&&s2>=n)\r\n\t\t\t\t\t{\r\n\t\t\t\t\t\tcout<<\"YES\\n\";\r\n\t\t\t\t\t\tbreak;\r\n\t\t\t\t\t}\r\n"}
+{"task_id": "block_completion_000251", "completion": "\t\tflag1=1;\r\n\t\t\t}\r\n\t\t\telse\r\n\t\t\t{\r\n\t\t\t\tflag1=0;\r\n\t\t\t}\r\n\t\t\tif(x%m==0)\r\n\t\t\t{\r\n\t\t\t\tsum1+=x/m;\r\n\t\t\t\tif((x/m)>=3)\r\n\t\t\t\tflag1=1;\r\n"}
+{"task_id": "block_completion_000252", "completion": "\tfor (int i = 1; i <= n; ++i) {\r\n\t\t\tif (a[i] == 1) {\r\n\t\t\t\treturn true;\r\n\t\t\t}\r\n\t\t}\r\n\t\treturn false;\r\n"}
+{"task_id": "block_completion_000253", "completion": "if (en) e = 1;\r\n               } else {\r\n                    if (sn + u >= n) e = 1;\r\n                    else sn += u;\r\n               }\r\n           }\r\n           \r\n           if (en) {\r\n               if (u > 1) {\r\n                   if (u > 2) en = 1;\r\n                   else sn += u;\r\n"}
+{"task_id": "block_completion_000254", "completion": "if ( i == 0 )\r\n         {\r\n            f = 1;\r\n         }\r\n         else\r\n         {\r\n            f = i;\r\n         }\r\n         if ( f == 1 )\r\n         {\r\n            f1 = 1;\r\n         }\r\n         else\r\n         {\r\n            f1 = i;\r\n         }\r\n         if ( f1 == 1 )\r\n         {\r\n            f1 = i;\r\n         }\r\n         else\r\n         {\r\n            f1 = i;\r\n         }\r\n"}
+{"task_id": "block_completion_000255", "completion": "if(a[i]<1)f=0;\r\n       }\r\n        cout<<\"Yes\\n\";\r\n       for(i=1;i<=k;i++)\r\n       {\r\n           if(a[i]>1)f=0;\r\n"}
+{"task_id": "block_completion_000256", "completion": " OKM = true;\r\n           }\r\n           if(x >= 2 * M)\r\n           {\r\n               sumN += x / M;\r\n               if(!OKM && x >= 3 * M)\r\n                   OKM = true;\r\n           }\r\n           if(x >= 2 * K)\r\n           {\r\n               sumN += x / K;\r\n               if(!OKM && x >= 3 * K)\r\n                   OKM = true;\r\n           }\r\n           if(x >= 2 * K)\r\n           {\r\n               sumN += x / K;\r"}
+{"task_id": "block_completion_000257", "completion": "\t\tif(a/n>2){\r\n\t\t\t\t\tif(a/n>2){\r\n\t\t\t\t\t\tans1+=a/n;\r\n\t\t\t\t\t\tans2+=a/n;\r\n\t\t\t\t\t}\r\n\t\t\t\t\tans1+=a/n;\r\n\t\t\t\t}\r\n\t\t\t\tif(a%m==0){\r\n\t\t\t\t\tans1+=a/n;\r\n\t\t\t\t\tans2+=a/n;\r\n\t\t\t\t}\r\n\t"}
+{"task_id": "block_completion_000258", "completion": "rowMax = Math.max(rowMax, columns);\r\n"}
+{"task_id": "block_completion_000259", "completion": "\t\t\t\tif(a[i] % n == 0) {\r\n\t\t\t\t\t\tsum -= a[i]/n;\r\n\t\t\t\t\t\tflag = true;\r\n\t\t\t\t\t\tbreak;\r\n\t\t\t\t\t}\r\n"}
+{"task_id": "block_completion_000260", "completion": "\t\t\t\ta[i]=1;\r\n"}
+{"task_id": "block_completion_000261", "completion": "\t\tcontinue;\n"}
+{"task_id": "block_completion_000262", "completion": "count++;\r\n           }\r\n           if(count==0)\r\n           {\r\n               return false;\r\n           }\r\n           else\r\n           {\r\n               return true;\r\n"}
+{"task_id": "block_completion_000263", "completion": "big = true;\r\n"}
+{"task_id": "block_completion_000264", "completion": "if (a[i] % m == 0) {\r\n\t\t\t\t\tv += 1L * a[i] / m;\r\n\t\t\t\t} else {\r\n\t\t\t\t\tflag = true;\r\n\t\t\t\t}\r\n"}
+{"task_id": "block_completion_000265", "completion": "\t\ts = 0;\r\n\t\t\tx = 1;\r\n\t\t\ts = 1;\r\n"}
+{"task_id": "block_completion_000266", "completion": "   if (s[i] == '1') coyx(&f[u & j][v & a[j]], g[u][v]);\r\n                    else if (!(u & j)) coyx(&f[u][v & a[j]], g[u][v]);\r\n"}
+{"task_id": "block_completion_000267", "completion": "if (x==0) continue;\r\n                    if (x==1) continue;\r\n                    if (x==2) continue;\r\n                    if (x==3) continue;\r\n                    if (x==4) continue;\r\n                    if (x==5) continue;\r\n                    if (x==6) continue;\r\n                    if (x==7) continue;\r\n                    if (x==8) continue;\r\n                    if (x==9) continue;\r\n                    if (x==10) continue;\r\n"}
+{"task_id": "block_completion_000268", "completion": "if(dp[now][ha][ma]!=0){\r\n\t\t\tans+=dp[now][ha][ma];\r\n\t\t\tdp[now][ha][ma]=ans;\r\n\t\t}\r\n"}
+{"task_id": "block_completion_000269", "completion": "\t\t\t\t\tprintf(\"%d\\n\",s+f[k][u]);\r\n\t\t\t\t\t\tprintf(\"%d\\n\",s+f[k][v]);\r\n\t\t\t\t\t\tprintf(\"%d\\n\",s+f[k][u]);\r\n\t\t\t\t\t\tprintf(\"%d\\n\",s+f[k][v]);\r\n"}
+{"task_id": "block_completion_000270", "completion": "pow3 = 3 * pow2 % M;\r\n           pow2 = 2 * pow2 % M;\r\n           pow3 = (pow3 * pow2 % M) % M;\r\n           pow3 = (pow3 * pow2) % M;\r\n           pow3 = (pow3 * pow2) % M;\r\n           pow2 = 2 * pow2 % M;\r\n           pow2 = (pow2 * pow2) % M;\r\n           pow3 = (pow3 * pow2) % M;\r\n           pow3 = (pow3 * pow2) % M"}
+{"task_id": "block_completion_000271", "completion": "\t\tif (bio[i][i] == -1) {\r\n\t\t\t\tbio[i][i] = 1;\r\n\t\t\t\treturn 0;\r\n\t\t\t}\r\n\t\t\tbio[i][i] = 1;\r\n"}
+{"task_id": "block_completion_000272", "completion": "\t\tif(i == 4) p = 1;\t\r\n\t\t\t\tp += d[i];\r\n\t\t\t\tp %= 998244353;\r\n"}
+{"task_id": "block_completion_000273", "completion": "\t\t\t\t\t\tflag=1;\r\n"}
+{"task_id": "block_completion_000274", "completion": "if (rew == 0) continue;\r\n"}
+{"task_id": "block_completion_000275", "completion": "\t\tx = 1;\r\n\t\t\t\tp3 = 1;\r\n\t\t\t\tp2 = 1;\r\n"}
+{"task_id": "block_completion_000276", "completion": " if(isbad)\r\n                           continue;\r\n                       if(curbitx>curbit)\r\n                           curbitx=curbit;\r\n                       if(isbad)\r\n                           continue;\r\n                       if(curbitx<curbit)\r\n                           curbitx=curbit;\r\n                       if(isbad)\r\n                           continue;\r\n                       if(curbitx>curbit)\r\n                           curbitx=curbit;\r\n                       if(isbad)\r\n                           continue;\r\n"}
+{"task_id": "block_completion_000277", "completion": "\tdp[i][0][0] = dp[i-1][0][0];\r\n\t\t\t\tdp[i][0][1] = dp[i-1][0][1];\r\n\t\t\t\tdp[i][0][2] = dp[i-1][0][2];\r\n\t\t\t\tdp[i][0][3] = dp[i-1][0][3];\r\n\t\t\t\tdp[i][0][4] = dp[i-1][0][4];\r\n\t"}
+{"task_id": "block_completion_000278", "completion": "break;\r\n                       }\r\n                        else\r\n                        {\r\n                           if (ch=='1' && ((m & bitmask0) > 0))\r\n                           {\r\n                               break;\r\n                           }\r\n                       }\r\n\r\n                       if(bitmask0 == 0)\r\n                       {\r\n                           cur[bitmask0][bitmask1] = 0;\r\n                       }\r\n\r\n                       else\r\n                       {\r\n                           cur[bitmask0][bitmask1] = 1;\r\n"}
+{"task_id": "block_completion_000279", "completion": "continue;\r\n                       }\r\n                       else\r\n                       {\r\n                           continue;\r\n                       }\r\n                       if(ch == '0' && ((m & bitmask0) == 0))\r\n                       {\r\n                           continue;\r\n                       }\r\n                       else\r\n                       {\r\n                           continue;\r\n                       }\r\n                       if(ch == '1' && ((m & bitmask0) == 0))\r\n                       {\r\n                           continue;\r\n                       }\r\n                       else\r\n                       {\r\n                           continue;\r"}
+{"task_id": "block_completion_000280", "completion": "if(ch == '2')\r\n                         {\r\n                             index = m & bitmask0;\r\n                        }\r\n                       }\r\n\r\n                       for(var bitmask1 = 0;bitmask1 < 8;bitmask1++)\r\n                       {\r\n                           if(ch == '3')\r\n                           {\r\n                                index = m & bitmask0;\r\n                           }\r\n"}
+{"task_id": "block_completion_000281", "completion": "dp1[k] = 1\r\n"}
+{"task_id": "block_completion_000282", "completion": "dp1[k&i] = 0\r\n"}
+{"task_id": "block_completion_000283", "completion": "curDelta += tc;\r\n"}
+{"task_id": "block_completion_000284", "completion": "\t\tp.second = p.first + t;\r\n\t\t\t\tp.first = p.second;\r\n\t\t\t\tp.second = 1 + t;\r\n\t\t\t}\r\n\t\t\telse {\r\n\t\t\t\tp.first = p.second;\r\n\t\t\t\tp.second = 1 + t;\r\n\t\t\t}\r\n\t\t\tif (p.first == p.second) {\r\n\t\t\t\tp.first = p.first + t;\r\n\t\t\t\tp.second = 1 + t;\r\n\t"}
+{"task_id": "block_completion_000285", "completion": "   if(now>m){\r\n           now-=m;\r\n           now=m;\r\n       }\r\n       if(now>m){\r\n           now-=m;\r\n           now=m;\r\n       }\r\n       if(now>m){\r\n           now-=m;\r\n           now=m;\r\n       }\r\n       if(now>m){\r\n           now-=m;\r\n           now=m;\r\n       }\r\n       if(now>m){\r\n           now-=m;\r\n           now=m;\r\n       }\r\n"}
+{"task_id": "block_completion_000286", "completion": "r = max(r, d);\r\n     }\r\n     if (d == m) {\r\n       l = i.second;\r\n     }\r\n     if (d == m) {\r\n       r = i.first;\r\n     }\r\n     if (d == m) {\r\n       d = i.second;\r\n     }\r\n     if (d == m) {\r\n       a = i.first;\r\n     }\r\n     if (d == m) {\r\n       a = i.second;\r\n     }\r\n     if (d == m) {\r\n       a = i.first;\r"}
+{"task_id": "block_completion_000287", "completion": "\t\tlas=i.first;\n"}
+{"task_id": "block_completion_000288", "completion": "\tif(i<n) r[i]=i;\r\n\t\t}\r\n\t\tfor(int i=1;i<=n;++i) r[i]=i;\r\n\t}\r\n\tfor(int i=1;i<=n;++i)\r\n\t{\r\n\t\tfor(int j=1;j<=m;++j)\r\n\t\t{\r\n\t\t\tif(i<n) r[i]=j;\r\n"}
+{"task_id": "block_completion_000289", "completion": "\t\tif (v.second<v.first){\r\n\t\t\t\tl1-=v.first;\r\n\t\t\t\tl2-=v.second;\r\n\t\t\t}\r\n"}
+{"task_id": "block_completion_000290", "completion": "\t\td += diff[i].second;\n\t\t\t\ta -= d;\n\t\t\t}\n\t\t\tif(a > m){\n\t\t\t\td += diff[i].second;\n\t\t\t\ta -= d;\n\t\t\t}\n\t\t\tif(a > m){\n\t\t\t\td += diff[i].second;\n\t\t\t\ta -= d;\n\t\t\t}\n\t\t\tif(a > m){\n\t\t\t\td += diff[i].second;\n"}
+{"task_id": "block_completion_000291", "completion": "   v.pb({x[i] - p[i], 1});\r\n"}
+{"task_id": "block_completion_000292", "completion": "\t\t\t\tcur_slope = 0;\r\n\t\t\t\t\tcur_pos = i;\r\n"}
+{"task_id": "block_completion_000293", "completion": "   b_1 = it.first;\r\n           } else {\r\n               b_1 = it.second;\r\n           }\r\n           if (b_1 > m) {\r\n               b_1 = m;\r\n           }\r\n           if (b_1 == 0) {\r\n               b_1 = 0;\r\n           }\r\n           if (b_1 == 1) {\r\n               b_1 = 1;\r\n           }\r\n           if (b_1 == 2) {\r\n               b_1 = 2;\r\n"}
+{"task_id": "block_completion_000294", "completion": "\t\tlst-=1ll*m;\r\n\t\t\t\tup+=1ll*m;\r\n"}
+{"task_id": "block_completion_000295", "completion": "\t\t\t\txie++;\r\n\t\t\t\t\txie=0;\r\n"}
+{"task_id": "block_completion_000296", "completion": ""}
+{"task_id": "block_completion_000297", "completion": ""}
+{"task_id": "block_completion_000298", "completion": "\t\t\t\tlk = Math.min(lk, sum - m - p[0]);\r\n        \t\t\trk = Math.min(rk, sum - m + p[0]);\r\n        \t\t}\r\n        \t\tif(lk > 0) {\r\n        \t\t\tlk = Math.min(lk, sum - m - p[0]);\r\n        \t\t\trk = Math.min(rk, sum - m + p[0]);\r\n"}
+{"task_id": "block_completion_000299", "completion": ""}
+{"task_id": "block_completion_000300", "completion": "max2 = Math.Max(max2, t[i] - r[i].p);\r\n"}
+{"task_id": "block_completion_000301", "completion": "max2 = Math.Max(max2, t[j] - r[j].x);\r\n"}
+{"task_id": "block_completion_000302", "completion": "   s = new char[0];\r\n                   _index++;\r\n                   _line.Remove(s);\r\n                   _index++;\r\n                   _line.Remove(s);\r\n                   _index++;\r\n                   _line.Remove(s);\r\n                   _index++;\r\n                   _line.Remove(s);\r\n                   _index++;\r\n                   _line.Remove(s);\r\n                   _index++;\r\n                   _line.Remove(s);\r\n                   _index++;\r\n                   _line.Remove(s);\r"}
+{"task_id": "block_completion_000303", "completion": "flag=false;\r\n"}
+{"task_id": "block_completion_000304", "completion": "c=0;b=0;\n"}
+{"task_id": "block_completion_000305", "completion": ""}
+{"task_id": "block_completion_000306", "completion": "ans = max(ans,dp[i]);\r\n"}
+{"task_id": "block_completion_000307", "completion": "   flag=1;\r\n"}
+{"task_id": "block_completion_000308", "completion": "\tp[s[i]]++;\r\n\t\t\tp[s[i]]--;\r\n\t\t}\r\n\t\telse{\r\n\t\t\tp[s[i]]--;\r\n\t\t\tp[s[i]]--;\r\n\t\t}\r\n\t}\r\n\tfor(ll i=0;i<n;i++){\r\n\t\tif(p[i] == 0){\r\n\t\t\tcout<<i<<\" \";\r\n\t\t\treturn;\r\n"}
+{"task_id": "block_completion_000309", "completion": "\t\tma=0;\r\n\t\t\t}\r\n\t\t\telse\r\n\t\t\t{\r\n\t\t\t\tma=0;\r\n\t\t\t}\r\n\t\t}\r\n\t\tfor (i=n-1;i>=0;i--)\r\n\t\t{\r\n\t\t\tans+=mp[base];\r\n\t\t\tif (ans<ma)\r\n\t\t\t{\r\n\t\t\t\tma=0;\r\n"}
+{"task_id": "block_completion_000310", "completion": "res1.push_back(sum);\r\n"}
+{"task_id": "block_completion_000311", "completion": "\t\tif(e[k]<0){\r\n\t\t\t\t\tmx=0;\r\n\t\t\t\t\tbreak;\r\n\t\t\t\t}\r\n\t\t\t\tif(e[k]>0){\r\n\t\t\t\t\tmx=e[k];\r\n\t\t\t\t\tbreak;\r\n\t\t\t\t}\r\n"}
+{"task_id": "block_completion_000312", "completion": "ans = 1;\r\n"}
+{"task_id": "block_completion_000313", "completion": "found_zero = 1;\r\n\t\t}\r\n\t\telse {\r\n\t\t\tif (current_sum == 0) {\r\n\t\t\t\tcurrent_sum = 0;\r\n\t\t\t}\r\n\t\t\telse {\r\n\t\t\t\tcurrent_sum = max(current_sum, -current_sum + 1);\r\n\t\t\t}\r\n\t\t}\r\n\t\tif (freq[current_sum] == 0) {\r\n\t\t\tans += max_visit;\r\n\t\t\tfreq[current_sum] = 0;\r"}
+{"task_id": "block_completion_000314", "completion": "ans += freqs.getOrDefault(0L, 0);\r\n"}
+{"task_id": "block_completion_000315", "completion": "if (lst.get(index2) == 0) {\r\n                           fist = false;\r\n                           break;\r\n                       }\r\n                       fist = false;\r\n"}
+{"task_id": "block_completion_000316", "completion": "\t\t\t\tmax = Math.max(max, map.get(prefix[i]));\r\n\t\t\t\t\tif (map.get(prefix[i]) == 0) {\r\n\t\t\t\t\t\tmap.put(prefix[i], 1);\r\n\t\t\t\t\t}\r\n"}
+{"task_id": "block_completion_000317", "completion": "ans+=mp.getOrDefault(0L,0);\r\n\t\t                found_zero=true;\r\n"}
+{"task_id": "block_completion_000318", "completion": "   sum = 0;\r\n           } else {\r\n               sum = 0;\r\n"}
+{"task_id": "block_completion_000319", "completion": ""}
+{"task_id": "block_completion_000320", "completion": "\t\ta[j] = i;\r\n   \t\t\ta[j] = j;\r\n   \t\t}\r\n   \t\tfor(int i=0;i<n;i++){\r\n   \t\t\tif(s[i] == '0'||s[i] == '9'){\r\n   \t\t\t\tans++;\r\n   \t\t\t\tbreak;\r\n   \t\t\t}\r\n"}
+{"task_id": "block_completion_000321", "completion": "if (j == 0) d++;\r\n"}
+{"task_id": "block_completion_000322", "completion": "\t\t\t\tmx=0;\r\n\t\t\t\t\tbreak;\r\n"}
+{"task_id": "block_completion_000323", "completion": "cc[y] = 1;\r\n                                  c++;\r\n                                  if(cc[y] == 1)\r\n                                  {\r\n                                      ans = 1;\r\n                                      break;\r\n                                  }\r\n                                  if(cc[y] == 1)\r\n                                  {\r\n                                      ans = 1;\r\n                                      break;\r\n                                  }\r\n                                  if(cc[y] == 1)\r\n"}
+{"task_id": "block_completion_000324", "completion": "res=max;\n"}
+{"task_id": "block_completion_000325", "completion": "   mp[s[i+j]]++;\r\n"}
+{"task_id": "block_completion_000326", "completion": "\t\t\t\t\t\t\t\tsum=0;\n\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t"}
+{"task_id": "block_completion_000327", "completion": "mp[j] = min(mp[j],c);\r\n       }\r\n       \r\n       for(ll i=0;i<n;i++)\r\n       {\r\n           mp[i] = min(mp[i],c);\r\n       }\r\n       \r\n       for(ll i=0;i<n;i++)\r\n       {\r\n           mp[i] = min(mp[i],c);\r\n"}
+{"task_id": "block_completion_000328", "completion": "max = cnt[(int)(s[j]-'0')];\n        }\n        if (max <= uniq) {\n          ans++;\n        }\n        if (ans <= uniq) {\n          ans++;\n        }\n        if (ans <= uniq) {\n          ans++;\n        }\n        if (ans <= uniq) {\n          ans++;\n        }\n        if (ans <= uniq) {\n          ans++;\n        }\n        if (ans <= uniq) {\n          ans++;\n"}
+{"task_id": "block_completion_000329", "completion": "\t\t\t\tif(s[j]!=s[j+1]){\r\n\t\t\t\t\t\tprintf(\"%d\",i+1);\r\n\t\t\t\t\t\tsum=sum+s[j];\r\n\t\t\t\t\t\tprintf(\"%d\",i+1);\r\n\t\t\t\t\t\tprintf(\"%d\",j+1);\r\n\t\t\t\t\t}\r\n"}
+{"task_id": "block_completion_000330", "completion": "max=b[a[s]-48];\r\n                }\r\n                max=max+1;\r\n           }\r\n           sum1=sum1+sum1;\r\n           max=max+1;\r\n           for(ll s=0;s<n;s++)\r\n           {\r\n               if(max>sum1)\r\n               {\r\n                   continue;\r\n"}
+{"task_id": "block_completion_000331", "completion": "if(arr[i] > arr[j]){\r\n\t\t            max = arr[i];\r\n\t\t           arr[i] = arr[j];\r\n\t\t           arr[j] = max;\r\n\t\t           ans = max;\r\n\t\t       }\r\n"}
+{"task_id": "block_completion_000332", "completion": "\t\t\t\t\tans+=1;\r\n\t\t    \t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t"}
+{"task_id": "block_completion_000333", "completion": "   if (freq[j] > 0)\r\n                    count++;\r\n"}
+{"task_id": "block_completion_000334", "completion": "\t\t\t\t\t\t max=0;\n    \t\t\t\t\t }\n    \t\t\t\t\t if(max>10)\n    \t\t\t\t\t {\n    \t\t\t\t\t\t max=0;\n    \t\t\t\t\t }\n    \t\t\t\t\t if(max>q)\n    \t\t\t\t\t {\n    \t\t\t\t\t\t max=0;\n"}
+{"task_id": "block_completion_000335", "completion": "                               ans++;\r\n                                                break;\r\n                                       }\r\n                                       if (c >= a[s.charAt(i + j) - '0']) {\r\n                                                ans++;\r\n                                                break;\r\n"}
+{"task_id": "block_completion_000336", "completion": ""}
+{"task_id": "block_completion_000337", "completion": "   maxFreq = freqs[str.charAt(charIter) - '0'];\r\n               }\r\n               if (freqs[str.charAt(charIter) - '0'] > maxFreq) {\r\n                   maxFreq = freqs[str.charAt(charIter) - '0'];\r\n               }\r\n               if (freqs[str.charAt(charIter) - '0'] == maxFreq) {\r\n                   distinct = 0;\r\n"}
+{"task_id": "block_completion_000338", "completion": "if(freq[j]>maxFreq){\r\n                       maxFreq=freq[j];\r\n                       distinct=0;\r\n                       break;\r\n                    }\r\n"}
+{"task_id": "block_completion_000339", "completion": "   _line.Remove(s);\r\n"}
+{"task_id": "block_completion_000340", "completion": "ios_base::sync_with_stdio(false);\r\n    cin.tie(nullptr);\r\n    cout.tie(nullptr);\r\n    cout << \"1 2 3 4 5 6 7 8 9\";\r\n    cout << \"1 2 3 4 5 6 7 8 9\";\r\n    cout << \"1 2 3 4 5 6 7 8 9\";\r\n    cout << \"1 2 3 4 5 6 7 8 9\";\r\n"}
+{"task_id": "block_completion_000341", "completion": "printf(\"%ld\\n\",(n+1)/2);\r\n"}
+{"task_id": "block_completion_000342", "completion": "int n;\r\n\tcin>>n;\r\n\tfor(int i=0;i<n;i++)\r\n\t\tcout<<i<<\" \";\r\n\tcout<<endl;\r\n\tcout<<\" \"<<n<<endl;\r\n\tfor(int i=0;i<n;i++)\r\n\t\tcout<<i<<\" \";\r\n\tcout<<endl;\r\n\tcout<<\" \"<<n<<endl;\r\n\tfor(int i=0;i<n;i++)\r\n\t\tcout<<i<<\" \";\r\n\tcout<<endl;\r\n"}
+{"task_id": "block_completion_000343", "completion": "int n;\r\n        scanf(\"%d\", &n);\r\n        printf(\"%d\\n\", t);\r\n        printf(\"%d\\n\", n);\r\n        printf(\"%d\\n\", t);\r\n        printf(\"%d\\n\", n);\r\n        printf(\"%d\\n\", t);\r\n        printf(\"%d\\n\", n);\r\n        printf(\"%d\\n\", t);\r\n        printf(\"%d\\n\", n);\r\n        printf(\"%d\\n\", t);\r\n        printf(\"%d\\n\", n);\r\n        printf(\"%d\\n\", t);\r\n"}
+{"task_id": "block_completion_000344", "completion": "cout << _tc << \"\\n\";\r\n\t\tcout << _tc << \"\\n\";\r\n\t\tcout << _tc << \"\\n\";\r\n\t\tcout << _tc << \"\\n\";\r\n\t\tcout << _tc << \"\\n\";\r\n\t\tcout << _tc << \"\\n\";\r\n\t\tcout << _tc << \"\\n\";\r\n\t\tcout << _tc << \"\\n\";\r\n\t\tcout << _tc << \"\\n\";\r\n\t\tcout << _tc << \"\\n\";\r\n\t\tcout << _tc << \"\\n\";\r\n"}
+{"task_id": "block_completion_000345", "completion": "cin>>x;\r\n\t\tcout<<x<<endl;\r\n\t\tcout<<\"0\"<<x<<endl;\r\n\t\tcout<<\"1\"<<x<<endl;\r\n\t\tcout<<\"2\"<<x<<endl;\r\n\t\tcout<<\"3\"<<x<<endl;\r\n\t\tcout<<\"4\"<<x<<endl;\r\n\t\tcout<<\"5\"<<x<<endl;\r\n\t\tcout<<\"6\"<<x<<endl;\r\n\t\tcout<<\"7\"<<x<<endl;\r\n"}
+{"task_id": "block_completion_000346", "completion": "printf(\"%d\\n\",n);//printf(\"%d\\n\",k);//printf(\"%d\",n);//printf(\"%d\",k);//printf(\"%d\",n);//printf(\"%d\",k);//printf(\"%d\",n);//printf(\"%d\",k);//printf(\"%d\",n);//printf(\"%d\",k);//printf(\"%d\",n);//printf(\"%d\",k);//printf(\"%d\",n);//printf(\"%d\",k);//printf(\"%d\",n);//printf(\"%d\",k);//printf(\"%d\",n);//printf(\"%d\",k"}
+{"task_id": "block_completion_000347", "completion": "   int n;\r\n    std::cin>>n;\r\n    std::cout<<\"The maximum possible side length of a square you can create is \"<<n<<\"\\n\";\r\n    return 0;\r\n"}
+{"task_id": "block_completion_000348", "completion": "// get input from the user\r\n        cin>>n;\r\n        cout<<\"The maximum possible side length of a square you can create is \"<<ll<<\" \"<<(ll)ll<<\" \"<<(ll)ll<<\" \"<<(ll)ll<<\" \"<<(ll)ll<<\" \"<<(ll)ll<<\" \"<<(ll)ll<<\" \"<<(ll)ll<<\" \"<<(ll)ll<<\" \"<<(ll)ll<<\" \"<<(ll)ll<<\" \"<<(ll)ll<<\" \"<<(ll)"}
+{"task_id": "block_completion_000349", "completion": "for (; t < n; t++) {\n\t\t\tprintf(\"%d \", t);\n\t\t}\n\t\tprintf(\"\\n\");\n\t}\n\tfor (; t < n; t++) {\n\t\tprintf(\"%d \", t);\n\t}\n\tprintf(\"\\n\");\n\tfor (; t > 0; t--) {\n\t\tprintf(\"%d \", t);\n\t}\n\tprintf(\"\\n\");\n\tfor (; t < n; t++) {\n\t\tprintf(\"%d \", t);\n"}
+{"task_id": "block_completion_000350", "completion": "int n;\r\n    cin >> n;\r\n    cout << n << endl;\r\n    cout << n << endl;\r\n    cout << n << endl;\r\n    cout << n << endl;\r\n    cout << n << endl;\r\n    cout << n << endl;\r\n    cout << n << endl;\r\n    cout << n << endl;\r\n    cout << n << endl;\r\n    cout << n << endl;\r\n    cout << n << endl;\r\n    cout << n << endl;\r\n    cout << n << endl;\r\n    cout << n << endl;\r\n    cout << n << endl"}
+{"task_id": "block_completion_000351", "completion": "cout<<n/2<<\"\\n\";\r\n"}
+{"task_id": "block_completion_000352", "completion": "ios_base::sync_with_stdio(false);\r\n\tcin.tie(nullptr);\r\n\tcout.tie(nullptr);\r\n\tcout.tie(nullptr);\r\n\tcout.tie(nullptr);\r\n\tcout.tie(nullptr);\r\n\tcout.tie(nullptr);\r\n\tcout.tie(nullptr);\r\n\tcout.tie(nullptr);\r\n\tcout.tie(nullptr);\r\n\tcout.tie(nullptr);\r\n\tcout.tie(nullptr);\r\n\tcout.tie"}
+{"task_id": "block_completion_000353", "completion": "int n = in.nextInt();\r\n\t\t\tint[][] grid = new int[n];\r\n\t\t\tfor (int i = 0; i < n; i++) {\r\n\t\t\t\tgrid[i] = in.nextInt();\r\n\t\t\t}\r\n\t\t\tgrid[0] = 0;\r\n\t\t\tgrid[n] = 0;\r\n\t\t\t\r\n\t\t\tfor (int i = 1; i < n; i++) {\r\n"}
+{"task_id": "block_completion_000354", "completion": "System.out.println(n/2+1);\r\n"}
+{"task_id": "block_completion_000355", "completion": "count++;\r\n        System.out.println(count);\r\n        testcase--;\r\n"}
+{"task_id": "block_completion_000356", "completion": "int n = scn.nextInt();\r\n"}
+{"task_id": "block_completion_000357", "completion": "int n=reader.nextInt();\r\n          int[] a=new int[n];\r\n          for(int i=0;i<n;i++)\r\n          {\r\n              a[i] = reader.nextInt();\r\n          }\r\n          System.out.println(a[0] + a[1] + a[2] + a[3]);\r\n"}
+{"task_id": "block_completion_000358", "completion": "int n1 = sc.nextInt();\r\n\t\t    System.out.println((n1+1)/2);\r\n\t\t    \r\n\t\t    int n2 = sc.nextInt();\r\n\t\t    System.out.println((n2+1)/2);\r\n\t\t    \r\n\t\t    int n3 = sc.nextInt();\r\n\t\t    System.out.println((n3+1)/2);\r\n\t\t    \r\n\t\t    int n4 = sc.nextInt();\r\n"}
+{"task_id": "block_completion_000359", "completion": "n=input.nextInt();\r\n            i=input.nextInt();\r\n            j=input.nextInt();\r\n            k=input.nextInt();\r\n            n=input.nextInt();\r\n            System.out.println(Math.max(Math.max(i,j),Math.min(i,k),Math.min(j,n)));\r\n"}
+{"task_id": "block_completion_000360", "completion": "int n=in.nextInt();\r\n            int[] a=new int[n];\r\n            for(int i=0;i<n;i++)\r\n            {\r\n               a[i] = in.nextInt();\r\n            }\r\n            System.out.println(a[n] + \" \" + t);\r\n"}
+{"task_id": "block_completion_000361", "completion": "int n=sc.nextInt();\r\n            int[] a=new int[n];\r\n            for(int i=0;i<n;i++){\r\n                a[i]=sc.nextInt();\r\n            }\r\n"}
+{"task_id": "block_completion_000362", "completion": "   s = _line.Substring(0, _index);\r\n                    _index = _line.Length - 1;\r\n                    _index = _index + 1;\r\n                    _index = _index + 2;\r\n                    _index = _index + 3;\r\n                    _index = _index + 4;\r\n                    _index = _index + 5;\r\n                    _index = _index + 6;\r\n                    _index = _index + 7;\r\n                    _index = _index + 8;\r\n"}
+{"task_id": "block_completion_000363", "completion": "\t\treturn 0;\r\n"}
+{"task_id": "block_completion_000364", "completion": "if(i==0)dp[i] = 1;\r\n\t\telse\r\n\t\t{\r\n\t\t\tdp[i] = max(dp[i],i+1);\r\n\t\t\tdp[i] = min(dp[i],i+1);\r\n\t\t}\r\n\t}\r\n}\r\nvoid solve()\r\n{\r\n\tll tp=0;\r\n\tfor(int i=1;i<=n;i++)\r\n\t{\r\n\t\tif(i==0)dp[i] = 1;\r\n"}
+{"task_id": "block_completion_000365", "completion": "\t\tf[(i-1)*m+j]=f[(i-1)*m+j-1];\r\n"}
+{"task_id": "block_completion_000366", "completion": "for (int i = 0; i < m; i++)\r\n            dfs(i);\r\n"}
+{"task_id": "block_completion_000367", "completion": "if(topf>1) rc[stk[topf-1]]=stk[topf],--topf;\r\n\t\t}\r\n\t\tint t=read();\r\n\t\tfor(int i=1;i<=n;i++) {\r\n\t\t\tif(topf>1) rc[stk[topf-1]]=stk[topf],--topf;\r\n"}
+{"task_id": "block_completion_000368", "completion": "mp[i] = 0;\r\n\t\tfor(int j=1;j<=n;++j)\r\n\t\t{\r\n\t\t\tmp[i] += mp[j];\r\n\t\t}\r\n\t}\r\n\tsort(b.begin(),b.end());\r\n\tfor(int i=1;i<=n;++i)\r\n\t{\r\n\t\tint mxid=mp[i];\r\n\t\tint mxid=mp[i];\r\n\t\tfor(int j=1;j<=n;++j)\r\n\t\t"}
+{"task_id": "block_completion_000369", "completion": "ll[i] = 0;\r\n\t\t}\r\n\t\tfor(int i=1;i<=n;i++)\r\n\t\t{\r\n\t\t\tif(ll[i]>0)\r\n\t\t\t{\r\n\t\t\t\tll[i] = ll[i]-1;\r\n\t\t\t}\r\n\t\t}\r\n\t\tfor(int i=1;i<=n;i++)\r\n\t\t{\r\n\t\t\tif(i==1)\r\n\t\t\t\tcout<<ll[i]<<\" \";\r\n"}
+{"task_id": "block_completion_000370", "completion": "int x = d[i][0], y = d[i][1];\r\n               \r\n               if (x == 1) return x;\r\n               if (y == 1) return y;\r\n               if (x == 2) return x;\r\n               if (y == 2) return y;\r\n               if (x == 3) return x;\r\n               if (y == 3) return y;\r\n               if (x == 4) return x;\r\n               if (y == 4) return y;\r\n               if (x == 5) return x"}
+{"task_id": "block_completion_000371", "completion": "if (i == n - 1) continue;\r\n      dfs(left[v]);\r\n      dfs(right[v]);\r\n"}
+{"task_id": "block_completion_000372", "completion": "\t\tpre_len=0;\r\n\t\t\t\tfor(int j=i;j<m;j++){\r\n\t\t\t\t\tif(i==j){\r\n\t\t\t\t\t\tpre_len=i;\r\n\t\t\t\t\t\tbreak;\r\n\t\t\t\t\t}\r\n\t\t\t\t}\r\n\t\t\t\tpre_len=0;\r\n"}
+{"task_id": "block_completion_000373", "completion": "\t\t\t\t\tdp[i][a] = (int) ((long) dp[i][a] * x % MD);\n\t\t\t\t\t\tx = (x + dp[i][a]) % MD;\n"}
+{"task_id": "block_completion_000374", "completion": "f[i][0] = i;\r\n                    f[i][1] = i;\r\n                    f[i][2] = i;\r\n                    f[i][3] = i;\r\n                    f[i][4] = i;\r\n                    f[i][5] = i;\r\n                    f[i][6] = i;\r\n                    f[i][7] = i;\r\n                    f[i][8] = i;\r\n                    f[i][9] = i;\r\n"}
+{"task_id": "block_completion_000375", "completion": ""}
+{"task_id": "block_completion_000376", "completion": "x = t;\r\n               y = t;\r\n               z = t;\r\n               w = t;\r\n               i = t;\r\n               j = t;\r\n               k = t;\r\n               a = t;\r\n               b = t;\r\n               n = t;\r\n               m = t;\r\n               t = t;\r\n               a = t;\r\n               b = t;\r\n               n = t;\r\n               m = t;\r\n               t = t;\r\n               a = t;\r\n               b = t;\r\n               n = t;\r\n               m = t;\r\n"}
+{"task_id": "block_completion_000377", "completion": "\tres += k[i];\r\n\t\t\tres = res + k[i];\r\n\t\t}\r\n\t\telse {\r\n\t\t\tres += k[i];\r\n\t\t\tres = res + k[i];\r\n\t\t}\r\n\t}\r\n\tcout << res + n << endl;\r\n\tfor (int i = 0 ; i < n ; ++i) {\r\n\t\tif (res + i == 0) {\r\n\t\t\tcout << res + i << endl;\r\n\t\t\tres = res + i;\r\n"}
+{"task_id": "block_completion_000378", "completion": "   sum=sum+s[i];\r\n"}
+{"task_id": "block_completion_000379", "completion": ""}
+{"task_id": "block_completion_000380", "completion": "int n,i,j,l,b,c,m,n,a[200050];\r\n\t\tfor(i=0;i<n;i++){\r\n\t\t\tfor(j=0;j<i;j++){\r\n\t\t\t\tif(s[i] == s[j]){\r\n\t\t\t\t\ts[i] = s[j];\r\n\t\t\t\t\ts[j] = s[i];\r\n\t\t\t\t}\r\n\t\t\t}\r\n\t\t}\r\n"}
+{"task_id": "block_completion_000381", "completion": "ans = res;\n"}
+{"task_id": "block_completion_000382", "completion": "cout<<s<<\"00\"<<endl;\r\n"}
+{"task_id": "block_completion_000383", "completion": "int x=s.size();\n        if(x==0){\n            ans=s.size()-1;\n            continue;\n        }\n        if(s[i]!=s[i+1]){\n            ans=s.size()-1;\n            continue;\n        }\n        if(s[i]!=s[i+1]){\n            ans=s.size()-1;\n            continue;\n        }\n"}
+{"task_id": "block_completion_000384", "completion": "int x[210000];\r\n\t\tx[0] = x[0] + x[1];\r\n\t\tx[1] = x[1] + x[2];\r\n\t\tx[2] = x[2] + x[3];\r\n\t\tx[3] = x[3] + x[4];\r\n\t\tx[4] = x[4] + x[5];\r\n\t\tx[5] = x[5] + x[6];\r\n\t\tx[6] = x"}
+{"task_id": "block_completion_000385", "completion": "count++;\r\n"}
+{"task_id": "block_completion_000386", "completion": "char[] ret = new char[size];\n\n                    if (char.IsWhiteSpace(ch))\n"}
+{"task_id": "block_completion_000387", "completion": "int x=0;\r\n                    for (int j = 1; j < n; j++) {\r\n                        if (x%2==0){\r\n                            res=res+x%2;\r\n                            break;\r\n                        }\r\n                    }\r\n                    System.out.println(res);\r\n"}
+{"task_id": "block_completion_000388", "completion": "sum += s.charAt(i);\r\n"}
+{"task_id": "block_completion_000389", "completion": "   if(s.length()>n)\r\n           count++;\r\n"}
+{"task_id": "block_completion_000390", "completion": "\t\t\t\tres=arr[i];\r\n\t\t\t\t\tres/=2;\r\n\t\t\t\t\t\r\n\t\t\t\t\tSystem.out.println(res);\r\n\t\t\t\t\t\r\n\t\t\t\t\tSystem.out.println(arr[i]);\r\n\t\t\t\t\t\r\n\t\t\t\t\tSystem.out.println(arr[i]);\r\n\t\t\t\t\t\r\n\t\t\t\t\tSystem.out.println(arr[i]);\r\n\t\t\t\t\t\r\n\t\t\t\t\t"}
+{"task_id": "block_completion_000391", "completion": "\t\tif(s.length()>n) {\r\n\t\t\t\t\tans=n;\r\n\t\t\t\t\tbreak;\r\n\t\t\t\t}\r\n"}
+{"task_id": "block_completion_000392", "completion": "count++;\n"}
+{"task_id": "block_completion_000393", "completion": "if(s.charAt(i)==s.charAt(j)){\r\n                    sum+=s.charAt(i);\r\n                    s=s.substring(i+1,j);\r\n                }\r\n"}
+{"task_id": "block_completion_000394", "completion": "ans=ans+s.charAt(i);\r\n           }\r\n           else{\r\n               ans=ans+s.charAt(i);\r\n"}
+{"task_id": "block_completion_000395", "completion": "if(n%2==0){\r\n\t\t\t\tflag=false;\r\n\t\t\t\tbreak;\r\n\t\t\t}\r\n"}
+{"task_id": "block_completion_000396", "completion": "flag = 0;\n"}
+{"task_id": "block_completion_000397", "completion": "if (sum <= 0) {\r\n                       break;\r\n               }\r\n               ++b;\r\n               sum -= *b;\r\n               ++b;\r\n               return true;\r\n"}
+{"task_id": "block_completion_000398", "completion": "     if(arr[x] < 0)\r\n                                i = x;\r\n"}
+{"task_id": "block_completion_000399", "completion": "\t\tz = true;\r\n\t\t\t}\r\n\t\t\tif (sum == 0 && z)\r\n\t\t\t{\r\n\t\t\t\tz = false;\r\n\t\t\t}\r\n\t\t\tif (sum == 0 && z)\r\n\t\t\t{\r\n\t\t\t\tz = false;\r\n\t\t\t}\r\n\t\t\tif (sum == 0 && z)\r\n\t\t\t{\r\n\t\t\t\tz = false;\r\n"}
+{"task_id": "block_completion_000400", "completion": "if (a[i]!=0) s++;\r\n\t\t\tif (s==0) cout<<i<<\" \";\r\n\t\t\telse cout<<s<<\" \";\r\n\t\t}\r\n\t\tfor (i=1;i<=n;i++)\r\n\t\t{\r\n\t\t\tif (s==0) cout<<i<<\" \";\r\n\t\t\telse cout<<s<<\" \";\r\n\t\t}\r\n\t\tfor (i=1;i<=n;i++)\r\n\t\t{\r\n\t\t\tif (s==0)"}
+{"task_id": "block_completion_000401", "completion": "y = 2;\r\n"}
+{"task_id": "block_completion_000402", "completion": "arr[i]--;\n        if(arr[i]<0){\n            arr[i]--;\n            arr[i]--;\n        }\n        arr[i]--;\n        if(arr[i]<0){\n            arr[i]--;\n            arr[i]--;\n        }\n        arr[i]--;\n        if(arr[i]<0){\n            arr[i]--;\n            arr[i]--;\n        }\n        arr[i]--;\n"}
+{"task_id": "block_completion_000403", "completion": ""}
+{"task_id": "block_completion_000404", "completion": "\tprintf(\"%d\", nums[j]);\r\n\t\tprintf(\"%d\", ab_add[j]);\r\n\t\tprintf(\"%d\", add[j]);\r\n\t\tprintf(\"%d\", add[j]-ab_add[j]);\r\n\t\tprintf(\"%d\", add[j]-add[j]);\r\n\t\tprintf(\"%d\", add[j]-ab_add[j]);\r\n\t\tprintf(\"%d\", add[j]-add[j]);\r\n\t\tprintf(\"%d\", add[j]-ab_add[j]);\r"}
+{"task_id": "block_completion_000405", "completion": "if(n%i==0){\r\n\t\t\t\ta=a+1;\r\n\t\t\t\tsum=sum+a;\r\n\t\t\t\tflag=true;\r\n\t\t\t\tans=false;\r\n\t\t\t}\r\n\t\t\tif(n%i==0){\r\n\t\t\t\ta=a-1;\r\n\t\t\t\tsum=sum+a;\r\n\t\t\t\tflag=true;\r\n\t\t\t\tans=false;\r\n\t\t\t}\r\n"}
+{"task_id": "block_completion_000406", "completion": "stt=0;\r\n                       sum=0;\r\n                       n=n+1;\r\n                       in=0;\r\n                       break;\r\n                   }\r\n                }\r\n                {\r\n                   if (stt==0)\r\n                   {\r\n                       stt=1;\r\n                       sum=0;\r\n                       n=n+1;\r\n                       in=0;\r\n                       break;\r\n                   }\r\n                }\r\n                {\r\n                   if (sum==0)\r\n                   {\r\n                       stt=0;\r\n                       sum"}
+{"task_id": "block_completion_000407", "completion": ""}
+{"task_id": "block_completion_000408", "completion": "result = false;\r\n                       break;\r\n"}
+{"task_id": "block_completion_000409", "completion": "result = false;\r\n"}
+{"task_id": "block_completion_000410", "completion": "   res[i] = 1;\r\n           } else\r\n           {\r\n               res[i] = 0;\r\n"}
+{"task_id": "block_completion_000411", "completion": "can = false;\n                        break;\n"}
+{"task_id": "block_completion_000412", "completion": "if(n%2==0) ans = true;\r\n\t\t\t\tif(i%2==0) ans = true;\r\n\t\t\t\tif(i%2==0) ans = true;\r\n\t\t\t\tif(i%2==0) ans = true;\r\n\t\t\t\tif(i%2==0) ans = true;\r\n"}
+{"task_id": "block_completion_000413", "completion": "if (x == 0) {\r\n                break;\r\n            }\r\n            if (x == 1) {\r\n                break;\r\n            }\r\n            if (x == 2) {\r\n                break;\r\n            }\r\n            if (x == 3) {\r\n                break;\r\n            }\r\n            if (x == 4) {\r\n                break;\r\n            }\r\n            if (x == 5) {\r\n                break;\r\n            }\r\n            if (x == 6) {\r\n                break;\r\n            }\r\n"}
+{"task_id": "block_completion_000414", "completion": "flag=1;\r\n           }\r\n           else{\r\n               sum=sum+ary[i];\r\n           }\r\n           if(sum<0){\r\n               flag=0;\r\n           }\r\n           else{\r\n               sum=sum+ary[i];\r\n           }\r\n           if(flag==1){\r\n               System.out.println(\"YES\");\r\n               System.out.println(sum);\r\n               System.out.println(flag);\r\n           }\r\n           else{\r\n               System.out.println(\"NO\");\r\n               System.out.println(sum);\r\n"}
+{"task_id": "block_completion_000415", "completion": "if(i%2==0) {\r\n\t\t\t\t\tsum += i;\r\n\t\t\t\t} else {\r\n\t\t\t\t\tvalid = false;\r\n\t\t\t\t\tbreak;\r\n\t\t\t\t}\r\n"}
+{"task_id": "block_completion_000416", "completion": "if(i==n)\r\n                        System.out.println(\"Yes\");\r\n                    else\r\n                        System.out.println(\"No\");\r\n"}
+{"task_id": "block_completion_000417", "completion": "lastNonZeroIdx++;\n               } else {\n                    data[lastNonZeroIdx] = 0;\n"}
+{"task_id": "block_completion_000418", "completion": "sum = sum+temp;\r\n"}
+{"task_id": "block_completion_000419", "completion": "seenZero = false;\r\n"}
+{"task_id": "block_completion_000420", "completion": "ans=false;\r\n"}
+{"task_id": "block_completion_000421", "completion": ""}
+{"task_id": "block_completion_000422", "completion": ""}
+{"task_id": "block_completion_000423", "completion": "f = 0\r\n"}
+{"task_id": "block_completion_000424", "completion": "a[i] = 0\r\n"}
+{"task_id": "block_completion_000425", "completion": "v = True\r\n"}
+{"task_id": "block_completion_000426", "completion": "f:m=0\r\n"}
+{"task_id": "block_completion_000427", "completion": "m=0\r\n"}
+{"task_id": "block_completion_000428", "completion": "   v = 0\r\n"}
+{"task_id": "block_completion_000429", "completion": "v = 0\r\n"}
+{"task_id": "block_completion_000430", "completion": "allzeros = True\r\n   print('YES' if allzeros else 'NO')\r\n\r\n\r\ndef main():\r\n    input()\r\n    for _ in range(t):\r\n        n = int(input())\r\n        allzeros = allzeros or total == 0\r\n        total = 0\r\n        if total < 0 or total != 0 and allzeros:\r\n            allzeros = True\r\n"}
+{"task_id": "block_completion_000431", "completion": "pos=1\r\n"}
+{"task_id": "block_completion_000432", "completion": "print(\"NO\")\r\n   \r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r"}
+{"task_id": "block_completion_000433", "completion": "       print('Yes')\r\n"}
+{"task_id": "block_completion_000434", "completion": ""}
+{"task_id": "block_completion_000435", "completion": ""}
+{"task_id": "block_completion_000436", "completion": "f += child.HowMuchWeGetForFree;\n"}
+{"task_id": "block_completion_000437", "completion": "\t\tif(fa[i]>r[i]){\r\n\t\t\t\tans=i;\r\n\t\t\t\tbreak;\r\n\t\t\t}\r\n\t\t}\r\n\t\tprintf(\"%lld\\n\",ans);\r\n\t\tfor(int i=n;i>=1;i--){\r\n\t\t\tif(fa[i]>r[i]){\r\n\t\t\t\tans=i;\r\n\t\t\t\tbreak;\r\n\t\t\t}\r\n"}
+{"task_id": "block_completion_000438", "completion": "cin>>grid[i];\r\n       }\r\n        long long ans=0;\r\n       for (int i{2};i<=n;i++){\r\n            cin>>ans;\r\n"}
+{"task_id": "block_completion_000439", "completion": "   dp[parent[i]] = 0;\n"}
+{"task_id": "block_completion_000440", "completion": "\t\tif(fa[i]>0) asw++,s[i]=y[i];\r\n\t\t\telse if(fa[i]<0) asw++,s[i]=0;\r\n\t\t\telse if(fa[i]>0) asw++,s[i]=0;\r\n\t\t}\r\n\t\tfor(int i=n; i; i--) {\r\n\t\t\tif(s[i]<x[i]) asw++,s[i]=y[i];\r\n"}
+{"task_id": "block_completion_000441", "completion": "\t\tans = max(ans, low.at(j) - sum.at(j));\r\n"}
+{"task_id": "block_completion_000442", "completion": "\tif(i==0){\r\n\t\t\tans++;\r\n\t\t\tcontinue;\r\n\t\t}\r\n\t\tif(i==0){\r\n\t\t\tf[u]=1;\r\n\t\t\tcontinue;\r\n\t\t}\r\n\t\tif(i==0){\r\n\t\t\tf[u]=2;\r\n\t\t\tcontinue;\r\n\t\t}\r\n\t\tif(i==0){\r\n\t\t\tf[u]=3;\r\n\t\t\tcontinue;\r\n\t\t}\r\n"}
+{"task_id": "block_completion_000443", "completion": "\r\n           if(i==n){\r\n               p[i] = 1;\r\n           }\r\n           else{\r\n               p[i] = 2;\r\n           }\r\n           l[i] = i;\r\n           r[i] = i;\r\n           v[i] = i;\r\n           l[i] = i;\r\n           r[i] = i;\r\n           v[i] = i;\r\n           l[i] = i;\r\n           r[i] = i;\r\n           v[i] = i;\r\n"}
+{"task_id": "block_completion_000444", "completion": "int l[400100];\r\n        for(int i=0;i<n;i++)\r\n        {\r\n            int r[400100];\r\n            scanf(\"%lld%lld\",&l[i],&r[i]);\r\n            l[i]-=l[i+1];\r\n        }\r\n        int ans=0;\r\n        for(int i=0;i<n;i++)\r\n"}
+{"task_id": "block_completion_000445", "completion": ""}
+{"task_id": "block_completion_000446", "completion": "\tfor(i=1;i<=n;i++)\r\n\t\tfor(l[i] = 0;l[i]<u;l[i]++)\r\n\t\t\tif(u%2==0){\r\n\t\t\t\tif(l[i]<u){\r\n\t\t\t\t\tu=l[i];\r\n\t\t\t\t}\r\n\t\t\t}\r\n\t\t\telse{\r\n\t\t\t\tu=l[i];\r\n\t\t\t}\r\n"}
+{"task_id": "block_completion_000447", "completion": "std::cin >> tmp;\n           tmp = tmp;\n           l = tmp;\n           r = tmp;\n       }\n        G.clear();\n       std::cin >> n;\n       for (ll i=0; i<n; i++){\n           std::cin >> l >> r;\n           mins[i] = l;\n           maxs[i] = r;\n       }\n       G.clear();\n       std::cin >> n;\n       for (ll i=0; i<n; i++){\n           std::cin >> l >> r;"}
+{"task_id": "block_completion_000448", "completion": "dp[i] = 1;\r\n\t\t\tfor (j = i + 1; j < n; j++)\r\n\t\t\t\tdp[i] = min(dp[i], dp[j]);\r\n"}
+{"task_id": "block_completion_000449", "completion": "int x=0;\n        for(int j=1;j<=n;j++){\n            if(fa[j]>x){\n                x=j;\n            }\n        }\n        if(x==0){\n            ans=min(ans,n-1);\n        }\n        else{\n            ans=min(ans,n-1);\n        }\n        if(ans==n){\n            cout<<ans<<endl;\n        }\n        else{\n            cout<<ans<<endl;\n        }\n"}
+{"task_id": "block_completion_000450", "completion": "\t\tans=max(ans,l[i]);\n\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t"}
+{"task_id": "block_completion_000451", "completion": "\t\tint p = sc.nextInt();\r\n\t\t\t\ttree.get(p).add(i);\r\n"}
+{"task_id": "block_completion_000452", "completion": "\t\tp[i] = nextInt();\r\n\t\t\t\tp[i] = nextInt();\r\n"}
+{"task_id": "block_completion_000453", "completion": "\tadj.add(new ArrayList<>());\r\n\t\t\t}\r\n\t\t\t\r\n\t\t\t\r\n\t\t\tint[][] range = new int[n+1][2];\r\n\t\t\t\r\n\t\t\tfor(int i=1;i<=n;i++) {\r\n\t\t\t\trange[i] = sc.nextInt();\r\n\t\t\t\t\r\n\t\t\t\tint[][] ans = new int[1];\r\n\t\t\t\tutil(1, adj, range, ans);\r\n\t\t\t\t\r\n\t\t"}
+{"task_id": "block_completion_000454", "completion": "queue.add(p[i]);\r\n"}
+{"task_id": "block_completion_000455", "completion": "   ans++;\r\n"}
+{"task_id": "block_completion_000456", "completion": "if (d[i] > d[v] + 1) continue;\r\n           if (d[i] == -1) continue;\r\n           d[i] = dist;\r\n           d[v] = v;\r\n       }\r\n       if (d[v] == -1) continue;\r\n       for (auto i : d[v]) {\r\n            if (d[i] == -1) continue;\r\n            d[i] = dist;\r\n           d[v] = v;\r\n"}
+{"task_id": "block_completion_000457", "completion": "\tif(v[x]<v[i]){\r\n\t\t\t\tv[x]+=v[i];\r\n\t\t\t\td[i]=i;\r\n\t\t\t\tq.push(mp(0,i));\r\n\t\t\t\ti++;\r\n\t\t\t}\r\n"}
+{"task_id": "block_completion_000458", "completion": "continue;\r\n                     res=i+1;\r\n                     for(auto u : par[u])\r\n                     {\r\n                         if(vis[u])//better ans already found\r\n                         {\r\n                             continue;\r\n                         }\r\n                         res+=u;\r\n                     }\r\n                     res=i+1;\r\n                     for(auto u : par[u])\r\n"}
+{"task_id": "block_completion_000459", "completion": ""}
+{"task_id": "block_completion_000460", "completion": "dis[x]+=y;\r\n\t\t\t\tq.push(x);\r\n\t\t\t\tq.pop();\r\n\t\t\t}\r\n\t\t}\r\n\t\tif(dis[x]!=y) continue;\r\n\t\tfor(int i=0;i<e[x].size();i++)\r\n\t\t{\r\n\t\t\tint y=e[x][i];\r\n\t\t\tif(dis[x]+sum[y]<dis[y])\r\n\t\t\t{\r\n\t\t\t\tdis[x]+=y;\r\n\t"}
+{"task_id": "block_completion_000461", "completion": "\t\td[j]=1;\r\n\t\t\t\tq.push({j,i});\r\n"}
+{"task_id": "block_completion_000462", "completion": "                dp[v] = min(dp[v], dp[u]);\r\n"}
+{"task_id": "block_completion_000463", "completion": "if(f[x]<f[y])continue;\r\n\t\t\tpq.push({x,y});\r\n"}
+{"task_id": "block_completion_000464", "completion": "visited.pb(x.second);\r\n\t\t\tresult[x.second]=x.first;\r\n\t\t\tvisited.pb(x.first+khor[x.second]+1,y);\r\n\t\t\tvisited.pb(x.first+khor[x.second]+1,y);\r\n\t\t\tvisited.pb(x.first+khor[x.second]+1,y);\r\n\t\t\tvisited.pb(x.first+khor[x.second]+1,y);\r\n"}
+{"task_id": "block_completion_000465", "completion": "   dis[v]=1;\r\n"}
+{"task_id": "block_completion_000466", "completion": "   d[v]--;\n"}
+{"task_id": "block_completion_000467", "completion": "if(dis[i]!=x){p.push_back(dis[i]);}\r\n\t\t\tif(dis[i]!=y){p.push_back(dis[i]);}\r\n"}
+{"task_id": "block_completion_000468", "completion": "\t\tq.push({now,x});\r\n\t\t\t\tq.pop();\r\n\t\t\t}\r\n\t\t\tif(dis[now] == x){\r\n\t\t\t\tq.pop();\r\n\t\t\t}\r\n\t\t\tif(vis[now] == true){\r\n\t\t\t\tq.push({now,x});\r\n\t\t\t\tq.pop();\r\n\t\t\t}\r\n\t\t\tif(vis[now] == true){\r\n\t\t\t\tq.push({now,x});\r\n\t\t\t\t"}
+{"task_id": "block_completion_000469", "completion": "dists[v] = dist + d[v]\r\n        if d[v] < dist: continue\r\n"}
+{"task_id": "block_completion_000470", "completion": "\r\n      d[v]+=1\r\n"}
+{"task_id": "block_completion_000471", "completion": "dp[y]=10**18\n        hp[y]+=1\n        if hp[y]>dp[x]+cost:\n            dp[x]+=10**18\n        hp[y]+=1\n        if hp[y]>dp[x]+cost:\n            dp[x]+=10**18\n        hp[y]+=1\n        if hp[y]>dp[x]+cost:\n            dp[x]+=10**18\n"}
+{"task_id": "block_completion_000472", "completion": "cost[v] = cost[u] + cost[v] + 1\r\n"}
+{"task_id": "block_completion_000473", "completion": "\t\tadj[p].add(temp.cost);\r\n\t\t\t\tpq.offer(temp.cost);\r\n"}
+{"task_id": "block_completion_000474", "completion": "queue.add(cur);\r\n"}
+{"task_id": "block_completion_000475", "completion": "map.put(ele,new ArrayList<>());\r\n"}
+{"task_id": "block_completion_000476", "completion": "\t\tqueue.poll().poll();\r\n\t\t\t\t\tSystem.out.println(u.length);\r\n\t\t\t\t\treturn;\r\n"}
+{"task_id": "block_completion_000477", "completion": "ans -= count;\n"}
+{"task_id": "block_completion_000478", "completion": "\t\tf[i][1]=99999999,f[i][0]=-1;\r\n\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t"}
+{"task_id": "block_completion_000479", "completion": "dp[i]=0;\r\n        return 0;\r\n"}
+{"task_id": "block_completion_000480", "completion": "return it = dfs(x + 1, l, a[x]);\r\n"}
+{"task_id": "block_completion_000481", "completion": "\t\tif(f[j]<Inf)\r\n\t\t\t\tf[j] = inf;\r\n\t\t\t\tf[j] = f[j]-inf;\r\n"}
+{"task_id": "block_completion_000482", "completion": "\t\tdp[j] = max(dp[j], pd[j]);\r\n\t\t\t\tdp[j] = max(dp[j], pd[j - 1]);\r\n"}
+{"task_id": "block_completion_000483", "completion": "\t\t\t\t\tdp[low+(1<<j)][0] = max(dp[low+(1<<j)][0],dp[low+(1<<j)][1]);\r\n"}
+{"task_id": "block_completion_000484", "completion": "\t\t\tf[x] = 1000000000+x;\r\n\t\t}\r\n\t\tif (f[i]!=1000000000) mx=std::max(mx,1ll*i);\r\n\t\tfor (int x=i+1;x<=n;x++)\r\n\t\t{\r\n\t\t\tf[x] = f[x] - f[x+1];\r\n"}
+{"task_id": "block_completion_000485", "completion": "pmin = min, pmax = num, found = 1;\n"}
+{"task_id": "block_completion_000486", "completion": "\tif(it.second==pir(inf,-inf)) ans+=it.first;\r\n"}
+{"task_id": "block_completion_000487", "completion": "d = a[j]\r\n"}
+{"task_id": "block_completion_000488", "completion": "d = a[j]\r\n"}
+{"task_id": "block_completion_000489", "completion": "dp0 = Math.max(dp0,dp1);\r\n"}
+{"task_id": "block_completion_000490", "completion": "dp0 = Math.max(dp0,p[j]);\r\n"}
+{"task_id": "block_completion_000491", "completion": "cin >> a;\r\n\t}\r\n\tsort(a+1,a+l+1);\r\n\tfor(int i=1;i<=l;i++){\r\n\t\tx[i] = i;\r\n\t}\r\n\tfor(int i=1;i<=l;i++){\r\n\t\tx[i] = x[i-1] + x[i-l];\r\n"}
+{"task_id": "block_completion_000492", "completion": "if(i==n)\r\n\t\t{\r\n\t\t\tprintf(\"%lld\\n\",p[i]);\r\n\t\t\treturn 0;\r\n\t\t}\r\n\t\tif(i==q)\r\n\t\t{\r\n\t\t\tprintf(\"%lld\\n\",p[i]);\r\n\t\t\treturn 0;\r\n\t\t}\r\n\t\tif(i==n)\r\n\t\t{\r\n\t\t\tprintf(\"%lld\\n\",p[i]);\r\n\t\t\treturn 0;\r\n\t\t}\r\n"}
+{"task_id": "block_completion_000493", "completion": "cin >> P.size();\r\n        P.resize(P.size() - 1);\r\n        for(int i = 0; i < P.size(); i++) {\r\n            int x, y;\r\n            cin >> x >> y;\r\n            P.resize(x - P.size() - 1, y - P.size() - 1);\r\n            ans.push_back(x - P.size() - 1);\r\n            ans.push_back(y - P.size() - 1);\r\n        }\r\n"}
+{"task_id": "block_completion_000494", "completion": "arr[i] = arr[i-1];\r\n   }\r\n   for(int i = 2; i <= n; ++i){\r\n        arr[i] = arr[i-1];\r\n   }\r\n   for(int i = 0; i < n2; ++i){\r\n        arr[i] = arr[i-1];\r\n    }\r\n   for(int i = 0; i < n2; ++i){\r\n        arr[i] = arr[i-1];\r\n"}
+{"task_id": "block_completion_000495", "completion": "cin>>p[i];\r\n          p[i] = p[i+1];\r\n          p[i+1] = p[i];\r\n          p[i] = p[i+2];\r\n          p[i+2] = p[i];\r\n          p[i+2] = p[i+1];\r\n          p[i+1] = p[i];\r\n          p[i+1] = p[i+2];\r\n          p[i+2] = p[i];\r\n"}
+{"task_id": "block_completion_000496", "completion": "int x=q;\r\n        int y=x+1;\r\n        int r=q;\r\n        int l=x-1;\r\n        int r=y-1;\r\n\r\n        ara[r]=x;\r\n        ara[l]=y;\r\n        ara[r+1]=r;\r\n        ara[l+1]=l;\r\n        ara[r+2]=r;\r\n        ara[l+2]=l;\r\n        ara[r+3]=r;\r\n        ara[l+3]=l;\r\n        ara[r+4]=r;\r\n"}
+{"task_id": "block_completion_000497", "completion": "cout << a[n-x+y] << \"\\n\";\r\n       }\r\n       else {\r\n            cout << a[n-x] << \"\\n\";\r\n        }\r\n       x--;\r\n       y--;\r\n       if (x > y) {\r\n           cout << a[n-x] << \"\\n\";\r\n       }\r\n       if (y > x) {\r\n           cout << a[n-y] << \"\\n\";\r\n       }\r\n       if (x < y) {\r\n           cout << a[n-x] << \"\\n\";\r\n"}
+{"task_id": "block_completion_000498", "completion": "cout<<\"NO\"<<\"YES\"<<endl;\r\n"}
+{"task_id": "block_completion_000499", "completion": "cout<<p[i]<<\" \";\n        for(i=1;i<=n;i++)cout<<p[i]<<\" \";\n        cout<<endl;\n        cout<<\" \";\n"}
+{"task_id": "block_completion_000500", "completion": "if(p[j]>p[j+1])\r\n\t\tj=j+1;\r\n"}
+{"task_id": "block_completion_000501", "completion": "cout<<free[i]<<endl;\r\n       }\r\n       else{\r\n           cout<<x-y-1<<endl;\r\n       }\r\n   }\r\n   \r\n   for(int i=0; i<q; i++){\r\n       if(free[i] == p[x-1]-p[f]){\r\n           free[i] = p[x-1]-p[f];\r\n"}
+{"task_id": "block_completion_000502", "completion": "\r\n        cin>>a[i];\r\n        if(i==n-1)\r\n        {\r\n            cout<<i<<endl;\r\n        }\r\n        else\r\n        {\r\n            cout<<i<<endl;\r\n        }\r\n"}
+{"task_id": "block_completion_000503", "completion": "   result[i] = (result[i] - result[i - 1]) % n;\r\n           }\r\n           \r\n           for (int i = 0; i < l; i++)\r\n           {\r\n               int[] values = Array.ConvertAll(Console.ReadLine().Split(' '), int.Parse);\r\n               int x = values[0];\r\n               int y = values[1];\r\n               result[x] = (result[x] - result[x - y]);\r\n"}
+{"task_id": "block_completion_000504", "completion": "result[i] = result[i - 1] + nums[i - 1];\r\n"}
+{"task_id": "block_completion_000505", "completion": "if (i == 0) sums[i] = items[i];\r\n"}
+{"task_id": "block_completion_000506", "completion": "ans = x = 0;\r\n               }\r\n               else\r\n               {\r\n                    ans = x = 1;\r\n"}
+{"task_id": "block_completion_000507", "completion": "   int[] x = ReadArray();\r\n                    x[0] = x[0] + p[i];\r\n                    x[1] = x[1] + p[i];\r\n                    x[2] = x[2] + p[i];\r\n                    x[3] = x[3] + p[i];\r\n                    x[4] = x[4] + p[i];\r\n                    x[5] = x[5] + p[i];\r\n                    x[6] = x[6]"}
+{"task_id": "block_completion_000508", "completion": "       if (i == 0)\r\n           {\r\n               p[i] = 0;\r\n               q++;\r\n           }\r\n           else\r\n           {\r\n               p[i] = prefixSum[i] + p[i];\r\n           }\r\n           return;\r\n"}
+{"task_id": "block_completion_000509", "completion": "x=int(input())\r\n  y=int(input())\r\n  p=q-x\r\n  p+=p\r\n  if p>0:\r\n    print(0)\r\n  else:\r\n    print(1)\r\n\r\n"}
+{"task_id": "block_completion_000510", "completion": ""}
+{"task_id": "block_completion_000511", "completion": ""}
+{"task_id": "block_completion_000512", "completion": "\r\n    x,y=map(int,input().split())\r\n    if x<0 or y<0 or x>n and y>0:\r\n        print(0)\r\n    else:\r\n        if a[x]<a[y]:\r\n            a[x]-=a[y]\r\n        else:\r\n            a[x]-=a[y]\r\n"}
+{"task_id": "block_completion_000513", "completion": ""}
+{"task_id": "block_completion_000514", "completion": "\n    p[w] = p[w] + p[w-1]\r\n    p[w] = p[w] - p[w-1]\r\n    p[w] = p[w] + p[w-1]\r\n    p[w] = p[w] - p[w-1]\r\n    p[w] = p[w] + p[w-1]\r\n    p[w] = p[w] - p[w-1]\r\n"}
+{"task_id": "block_completion_000515", "completion": ""}
+{"task_id": "block_completion_000516", "completion": "print(val)\r\n    if n-x > 0:\r\n        print(val)\r\n    if n-x > 0:\r\n        print(val)\r\n    if n-x > 0:\r\n        print(val)\r\n    if n-x > 0:\r\n        print(val)\r\n    if n-x > 0:\r\n        print(val)\r\n    if n-x > 0:\r\n        print(val)\r\n    if n-x > 0:\r\n        print(val)\r\n"}
+{"task_id": "block_completion_000517", "completion": "\r\n    x=q-1;\r\n    y=q+1;\r\n    if x>0:x=0;\r\n    if y>0:y=0;\r\n    if x<0:x=0;\r\n    if y<0:y=0;\r\n    if x<0:x=0;\r\n    if y<0:y=0;\r\n    O[i]=x;\r\n    s[x]=y;\r\n    s[y]=s[x]-s[y];\r\n"}
+{"task_id": "block_completion_000518", "completion": "\r\n    x=s[i]\r\n    y=s[-1]\r\n    if x>0 and y>0:\r\n        s[i] = x\r\n    if x<0 and y<0:\r\n        s[i] = y\r\n    if x>0 and y>0:\r\n        s[i] = x\r\n    if x<0 and y<0:\r\n        s[i] = y\r\n"}
+{"task_id": "block_completion_000519", "completion": "print(prices[xy[0]-1])\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n"}
+{"task_id": "block_completion_000520", "completion": "print(l[-b] - a)\r\n\r\nfor _ in range(q):\r\n    x, y = map(int, sys.stdin.readline().split())\r\n    if x == 0:\r\n        print(l[-b])\r\n    else:\r\n        print(l[-b] - a)\r\n\r\n"}
+{"task_id": "block_completion_000521", "completion": "\r\n    for y in range(1,n+1):\r\n        if x%y==0:x,y=g(x%y)\r\n    print(a[x]-a[x-y])\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r"}
+{"task_id": "block_completion_000522", "completion": ""}
+{"task_id": "block_completion_000523", "completion": "print (arr[x-1])\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n"}
+{"task_id": "block_completion_000524", "completion": "\tprefix[i] = i;\r\n\t\t}\r\n\r\n\t\tint q = sc.nextInt();\r\n\t\t\r\n\t\tint[][] arr = new int[q];\r\n\t\tfor (int i = 0; i < q; i++) {\r\n\t\t\tarr[i] = i;\r\n"}
+{"task_id": "block_completion_000525", "completion": ""}
+{"task_id": "block_completion_000526", "completion": "int x=input.nextInt();\n\t\t \tint y=input.nextInt();\n\t\t \t ar[x]=ar[y];\n\t\t \t ar[y]-=ar[x];\n\t\t \t if(ar[x]>ar[y])\n\t\t \t {\n\t\t \t  q++;\n\t\t \t  }\n\t\t \t else\n\t\t \t {\n\t\t \t  q++;\n\t\t \t  }\n"}
+{"task_id": "block_completion_000527", "completion": "   li.add(i);\r\n"}
+{"task_id": "block_completion_000528", "completion": "int max_price = prices[i];\r\n            int max_price_per_item = prices[i+1];\r\n            int max_price_per_item_per_item = prices[i];\r\n            max_price_per_item = prices[i];\r\n            max_price_per_item_per_item = prices[i+1];\r\n            max_price_per_item_per_item_per_item = prices[i];\r\n            max_price_per_item_per_item_per_item_per_item"}
+{"task_id": "block_completion_000529", "completion": "arr[i] = Integer.parseInt(st.nextToken());\r\n"}
+{"task_id": "block_completion_000530", "completion": "arr[i]=i;\r\n        }\r\n       int q=0;\r\n       int max=0;\r\n       for (int i=0;i<q;i++){\r\n           q=i;\r\n           if (arr[i]>q){\r\n               max=arr[i];\r\n           }\r\n           if (arr[i]<q){\r\n               q=arr[i];\r\n           }\r\n"}
+{"task_id": "block_completion_000531", "completion": "a[i] = sc.nextInt();\r\n\t\t}\r\n\t\t\r\n\t\t// TODO Auto-generated method stub\r\n\t\tfor(int i=0;i<items;i++) {\r\n\t\t\ta[i] = sc.nextInt();\r\n\t\t}\r\n\t\t\r\n\t\t// TODO Auto-generated method stub\r\n\t\tfor(int i=0;i<items;i++) {\r\n\t\t\ta[i] = sc.nextInt();\r\n"}
+{"task_id": "block_completion_000532", "completion": "int l=0;\r\n\t\t\tint r=k.nextInt();\r\n\t\t\tint cnt=0;\r\n\t\t\tint cnt1=0;\r\n\t\t\tint cnt2=0;\r\n\t\t\tint cnt3=0;\r\n\t\t\tint cnt4=0;\r\n\t\t\tint cnt5=0;\r\n\t\t\tint cnt6=0;\r\n\t\t\tint cnt7=0;\r\n\t\t\tint cnt8=0;\r\n\t\t\tint cnt9=0;\r\n\t"}
+{"task_id": "block_completion_000533", "completion": ""}
+{"task_id": "block_completion_000534", "completion": ""}
+{"task_id": "block_completion_000535", "completion": "mark[i] = 1;\r\n"}
+{"task_id": "block_completion_000536", "completion": "if (i == j)\r\n            continue;\r\n"}
+{"task_id": "block_completion_000537", "completion": ""}
+{"task_id": "block_completion_000538", "completion": ""}
+{"task_id": "block_completion_000539", "completion": "   f[i]=(f[i]-i);\r\n       }\r\n       else{\r\n           f[i]=(1);\r\n           if(s[i]!=s[i+1]){\r\n               f[i]=(1);\r\n           }\r\n       }\r\n       if(f[0]!=1){\r\n           f[0]=(1);\r\n           f[1]=(1);\r\n"}
+{"task_id": "block_completion_000540", "completion": "\t\t\t\tcluster = 1;\r\n"}
+{"task_id": "block_completion_000541", "completion": "if v[y] == 0:\r\n                    continue\r\n                    cur.pop()\r\n                    queue.append(y)\r\n"}
+{"task_id": "block_completion_000542", "completion": "v[y] = 1\r\n"}
+{"task_id": "block_completion_000543", "completion": "    check = True\r\n"}
+{"task_id": "block_completion_000544", "completion": "continue\r\n"}
+{"task_id": "block_completion_000545", "completion": "       if not seen[v]:\r\n"}
+{"task_id": "block_completion_000546", "completion": "   ans = ans + 1\r\n\r\n"}
+{"task_id": "block_completion_000547", "completion": ""}
+{"task_id": "block_completion_000548", "completion": ""}
+{"task_id": "block_completion_000549", "completion": ""}
+{"task_id": "block_completion_000550", "completion": "list.add(j);\r\n                    }\r\n                    if (dist(points, i, j) < min) {\r\n                        min = dist(points, i, j);\r\n                        list.add(i);\r\n                    }\r\n                    if (dist(points, i, j) == min) {\r\n                        list.add(j);\r\n"}
+{"task_id": "block_completion_000551", "completion": "       visit.add(i);\r\n"}
+{"task_id": "block_completion_000552", "completion": "minDistanceArr[i] = minDistance;\r\n"}
+{"task_id": "block_completion_000553", "completion": "cur[i] = (int)cur[i];\r\n                       next[i] = cur[i];\r\n                       cur[i] = 1;\r\n                       cur[i] = 0;\r\n                       cur[i] = 1;\r\n                       next[i] = cur[i];\r\n                       cur[i] = 1;\r\n                       next[i] = cur[i];\r\n                       cur[i] = 1;\r\n                       next[i] = cur[i];\r\n"}
+{"task_id": "block_completion_000554", "completion": "cur[i] = (int)cur[i] + MOD_VAL;\r\n"}
+{"task_id": "block_completion_000555", "completion": "\r\n      cin>>a;\r\n      if(a==0){\r\n         cout<<n<<endl;\r\n         continue;\r\n      }\r\n      int max=n;\r\n      for(int j=0;j<m;j++){\r\n         if(a<n){\r\n            max=j;\r\n         }\r\n         if(a>n){\r\n            max=j;\r\n         }\r\n      }\r\n      cout<<max<<endl;\r\n"}
+{"task_id": "block_completion_000556", "completion": "for(int j=0;j<n;j++)\r\n           printf(\"%d\\n\",a[i]-a[j]);\r\n"}
+{"task_id": "block_completion_000557", "completion": "if (n == 1) {\r\n\t\t\t\tstd::cout << 1 << std::endl;\r\n\t\t\t\tbreak;\r\n\t\t\t}\r\n\t\t\ttemp = n;\r\n\t\t\tn = n + 1;\r\n"}
+{"task_id": "block_completion_000558", "completion": "for(int i = start; i < end; i++)\r\n    {\r\n        if(i%2==0)\r\n        {\r\n            sum = sum+i%2;\r\n            seet = i%2;\r\n        }\r\n        else\r\n        {\r\n            sum = sum+i%2;\r\n            seet = i%2;\r\n        }\r\n    }\r\n    cout << sum;\r\n"}
+{"task_id": "block_completion_000559", "completion": "a[j] = 0;a[j+1] = 1;\r\nfor(i=0;i<n;i++)\r\n{a[i] = a[i+1];\r\n}\r\nint sum=0;\r\nfor(i=0;i<n;i++)\r\n{sum+=a[i];\r\n}\r\nint sum=0;\r\nfor(i=0;i<n;i++)\r\n{sum+=a[i];\r\n}\r\nint sum=0;\r\n"}
+{"task_id": "block_completion_000560", "completion": "if(x>y){\r\n            x=y;\r\n        }\r\n"}
+{"task_id": "block_completion_000561", "completion": "cin>>m;\r\n           if(m==0){\r\n               m=1;\r\n           }\r\n           if(m==n){\r\n               m=0;\r\n           }\r\n           if(m==1){\r\n               m=1;\r\n           }\r\n           if(m==n){\r\n               m=0;\r\n           }\r\n           if(m==1){\r\n               m=1;\r\n           }\r\n           if(m==n){\r\n               m=0;\r\n           }\r\n"}
+{"task_id": "block_completion_000562", "completion": "cin >> a;\n\t\t\ta = a * n;\n\t\t\ta = a * m;\n\t\t\ta = a * n;\n\t\t\ta = a * m;\n\t\t\ta = a * n;\n\t\t\ta = a * m;\n\t\t\ta = a * n;\n\t\t\ta = a * m;\n\t\t\ta = a * n;\n\t\t\ta = a * m;\n\t\t\ta = a * n;\n\t\t\ta = a * m;\n\t\t\t"}
+{"task_id": "block_completion_000563", "completion": "if(i==m){\r\n               std::cin>>a;\r\n               a=a+1;\r\n           }\r\n           else{\r\n               std::cin>>a;\r\n               a=0;\r\n           }\r\n       }\r\n       s=m;\r\n       std::cin>>s;\r\n       for(int i=0;i<n;i++){\r\n            if(i==m){\r\n               std::cin>>a;\r\n               a=a+1;\r\n           }\r\n"}
+{"task_id": "block_completion_000564", "completion": "cin>>a_i;\r\n\t\t\r\n\t\tif(a_i>n){\r\n\t\t\tans=max(ans,n-a_i);\r\n\t\t\tans=min(ans,n-a_i);\r\n\t\t}\r\n\t\telse{\r\n\t\t\tans=max(ans,n-a_i);\r\n\t\t\tans=min(ans,n-a_i);\r\n\t\t}\r\n"}
+{"task_id": "block_completion_000565", "completion": "printf(\"%lld\\n\",a[i]);\r\n   }\r\n    scanf(\"%lld %lld\",&m,&n);\r\n    for(j=0;j<n;j++)\r\n    {\r\n    printf(\"%lld\\n\",b[j]);\r\n   }\r\n    scanf(\"%lld %lld\",&m,&n);\r\n    for(i=0;i<m;i++)\r\n    {\r\n    printf(\"%lld\\n\",m[i]);\r\n"}
+{"task_id": "block_completion_000566", "completion": "res = res + x;\r\n        }\r\n       else {\r\n            res = res + x;\r\n        }\r\n       cout << res << \"\\n\";\r\n   }\r\n\r\n   for (int i = 0; i < n; i++) {\r\n       int x;\r\n       cin >> x;\r\n       if (e < x) {\r\n            res = res + x;\r\n"}
+{"task_id": "block_completion_000567", "completion": "if(j == 0){\r\n            printf(\"%ld\\n\", i);\r\n            break;\r\n        }\r\n        printf(\"%ld\\n\", j);\r\n        printf(\"%ld\\n\", p);\r\n        printf(\"%ld\\n\", r);\r\n        printf(\"%ld\\n\", p);\r\n        printf(\"%ld\\n\", r);\r\n        printf(\"%ld\\n\", p);\r\n        printf(\"%ld\\n\", r);\r\n        printf(\"%ld\\n\", p);\r\n        printf(\"%ld\\n\", r);\r\n        printf(\"%ld\\n\", p);\r\n        printf"}
+{"task_id": "block_completion_000568", "completion": "int n=t+1;\r\n\t\t\tint m=n+1;\r\n\t\t\tint[] a=new int[m];\r\n\t\t\ta[0] = n;\r\n\t\t\ta[1] = m;\r\n\t\t\ta[2] = n;\r\n\t\t\ta[3] = m;\r\n\t\t\ta[4] = n;\r\n\t\t\ta[5] = m;\r\n\t\t\ta[6] = n;\r\n\t\t\ta[7] = m;\r\n\t\t\ta[8]"}
+{"task_id": "block_completion_000569", "completion": "int n = cin.nextInt();\r\n            int m = cin.nextInt();\r\n            solve();\r\n"}
+{"task_id": "block_completion_000570", "completion": "int a=n%10;\r\n               if(a>0){\r\n                   System.out.println(Math.abs(a));\r\n               }else{\r\n                   System.out.println(Math.abs(m));\r\n               }\r\n"}
+{"task_id": "block_completion_000571", "completion": "res = res + a;\r\n               } else {\r\n                    res = res - a;\r\n"}
+{"task_id": "block_completion_000572", "completion": "\r\n            sum+=i;\r\n"}
+{"task_id": "block_completion_000573", "completion": "int a = sc.nextInt();\r\n            int b = sc.nextInt();\r\n            int c = sc.nextInt();\r\n            int d = sc.nextInt();\r\n            int e = sc.nextInt();\r\n            int f = sc.nextInt();\r\n            int g = sc.nextInt();\r\n            int h = sc.nextInt();\r\n            int i = sc.nextInt();\r\n            int j = sc.nextInt();\r\n            int k = sc.nextInt();\r\n            int[] a = new int[n];\r\n"}
+{"task_id": "block_completion_000574", "completion": "eRestored++;\r\n"}
+{"task_id": "block_completion_000575", "completion": "if(i==0){\r\n               System.out.println(\"NO\");\r\n            }\r\n"}
+{"task_id": "block_completion_000576", "completion": "\tarr[i] = i;\r\n"}
+{"task_id": "block_completion_000577", "completion": "s[i] = 'a';\r\n"}
+{"task_id": "block_completion_000578", "completion": "\t\t\t\tk++;\r\n\t\t\t\t\tif(a[i]!=b[i]){\r\n\t\t\t\t\t\treturn 0;\r\n\t\t\t\t\t}\r\n"}
+{"task_id": "block_completion_000579", "completion": "if (x[i]=='a')cnta1++;\r\n\t\tif (y[i]=='a')cnta2++;\r\n\t\tif (x[i]=='c')cntc1++;\r\n\t\tif (y[i]=='c')cntc2++;\r\n\t\tif (cnta1<cnta2||cntc1>cntc2)flag =1;\r\n"}
+{"task_id": "block_completion_000580", "completion": "cin >> s >> st;\r\n"}
+{"task_id": "block_completion_000581", "completion": "printf(\"%d\",i+1);\r\n\t\t\t\t\t\ts1[i]=s1[i];\r\n\t\t\t\t\t\ts1[i]=s1[i+1];\r\n"}
+{"task_id": "block_completion_000582", "completion": "   cout << \"YES\\n\";\r\n"}
+{"task_id": "block_completion_000583", "completion": "s[i]=s[i+1];\r\n"}
+{"task_id": "block_completion_000584", "completion": "puts(\"NO\");\r\n"}
+{"task_id": "block_completion_000585", "completion": ""}
+{"task_id": "block_completion_000586", "completion": "\t\tf=0;\r\n\t\t\t\tbreak; \r\n"}
+{"task_id": "block_completion_000587", "completion": "cout<<s<<\" \";\r\n               }\r\n               else {\r\n                    cout<<s<<\" \";\r\n               }\r\n           }\r\n           cout<<endl;\r\n           for (int i=0; i<n; i++) {\r\n               if (s[i]!=k[i] && i < n-1) {\r\n                    cout<<s<<\" \";\r\n"}
+{"task_id": "block_completion_000588", "completion": "   no = false;\r\n           }\r\n           else if (s[i] == 'a')\r\n                sc++;\r\n           else if (s[i] == 'c')\r\n                tc++;\r\n           if (t[i] == 'a')\r\n                sc++;\r\n           else if (t[i] == 'c')\r\n                tc++;\r\n           if (sa < sc) {\r\n                   no = false;\r\n"}
+{"task_id": "block_completion_000589", "completion": "res = \"NO\";\r\n                     } else {\r\n                        res = \"NO\";\r\n"}
+{"task_id": "block_completion_000590", "completion": "System.out.println(possible ? \"YES\" : \"NO\");\r\n"}
+{"task_id": "block_completion_000591", "completion": "flag=false;\r\n                       break;\r\n                   }\r\n                }\r\n                if(flag)\r\n                {\r\n                   if(ind1[i]<ind2[i])\r\n                   {\r\n                       System.out.println(\"NO\");\r\n                       flag=false;\r\n                       break;\r\n"}
+{"task_id": "block_completion_000592", "completion": "\t\t\t\tdc++;\r\n\t\t\t\t\tif(da==0&&dc==0) break;\r\n\t\t\t\t}\r\n\t\t\t\tif(da==0&&dc==0) System.out.println(da + \" \" + db + \" \" + dc);\r\n\t\t\t\telse if(da==0&&dc==0) System.out.println(da + \" \" + db + \" \" + dc);\r\n\t\t\t\telse \r\n\t\t\t\t{\r\n\t\t\t\t\tdc++;\r\n\t\t\t\t\t"}
+{"task_id": "block_completion_000593", "completion": "out.println(\"NO\");\r\n"}
+{"task_id": "block_completion_000594", "completion": "j+=1;\r\n"}
+{"task_id": "block_completion_000595", "completion": " if (s.length()>n) {\r\n                  a=s.length()-n;\r\n                  b=s.length()-n;\r\n                  c=s.length()-n;\r\n                  a1=a+b;\r\n                  b1=b+c;\r\n                  c1=c+a1;\r\n               }\r\n"}
+{"task_id": "block_completion_000596", "completion": "sb.append(\"NO\\n\");\r\n                        continue k;\r\n                   }\r\n                   if (curr == 'c') {\r\n                       if (!a.isEmpty()) {\r\n                           if (c.peek() < a.peek()) {\r\n                               sb.append(\"NO\\n\");\r\n                               continue k;\r\n                           }\r\n                       }\r\n"}
+{"task_id": "block_completion_000597", "completion": "cin >> n;\r\n\t\tif (n == 1) {\r\n\t\t\tcout << \"YES\";\r\n\t\t\treturn;\r\n\t\t}\r\n\t\tif (dp[n] == 1) {\r\n\t\t\tcout << \"NO\";\r\n\t\t\treturn;\r\n\t\t}\r\n\t\tif (dp[n] == 1) {\r\n\t\t\tcout << \"YES\";\r\n\t\t\treturn;\r\n\t\t}\r\n"}
+{"task_id": "block_completion_000598", "completion": "int n;\r\n           scanf(\"%d\", &n);\r\n           if(n==1) {\r\n               dp[n] = 1;\r\n               break;\r\n           }\r\n           if(n==0) {\r\n               dp[n] = 1;\r\n               break;\r\n           }\r\n           if(n==1) {\r\n               dp[n] = 1;\r\n               break;\r\n           }\r\n           if(n==2) {\r\n               dp[n] = 1;\r\n               break;\r\n           }\r\n"}
+{"task_id": "block_completion_000599", "completion": "   dp[i] = 1;\r\n           }\r\n       }\r\n       \r\n       for(i=0;i<n;i++)\r\n       {\r\n           if(dp[i]<dp[i+1])\r\n           {\r\n               dp[i] = dp[i+1];\r\n"}
+{"task_id": "block_completion_000600", "completion": "   printf(\"%d\\n\", x);\r\n"}
+{"task_id": "block_completion_000601", "completion": "if(!f[i]) cout<<\"NO\\n\";\r\n        else cout<<\"YES\\n\";\r\n"}
+{"task_id": "block_completion_000602", "completion": "int a[210000];\n           for(int i=1;i<=n;++i){\n               cin>>a[i];\n               if(i==1){\n                  dp[i] = true;\n                  break;\n               }\n           }\n           for(int i=1;i<=n;++i){\n               if(i==1){\n                  dp[i] = true;\n                  break;\n               }\n           }\n"}
+{"task_id": "block_completion_000603", "completion": "for (int j = 1; j <= n; j ++)\r\n"}
+{"task_id": "block_completion_000604", "completion": "for(y = 0; y < n; y++)\r\n                           scanf(\"%d\", &arr[y]);\r\n                           \r\n"}
+{"task_id": "block_completion_000605", "completion": "dp[i] = true;\r\n"}
+{"task_id": "block_completion_000606", "completion": "dp[i]=dp[i+1];\r\n\t\t}\r\n\t\tfor(int i=1;i<=n;i++){\r\n\t\t\tdp[i]=dp[i+1];\r\n\t\t}\r\n\t\tfor(int i=1;i<=n;i++){\r\n\t\t\tdp[i]=dp[i+1];\r\n\t\t}\r\n\t\tfor(int i=1;i<=n;i++){\r\n\t\t\tdp[i]=dp[i+1];\r\n"}
+{"task_id": "block_completion_000607", "completion": "   dp[i] = true;\r\n"}
+{"task_id": "block_completion_000608", "completion": "   int n=n+1;\r\n"}
+{"task_id": "block_completion_000609", "completion": "   dp.set(i, true);\n"}
+{"task_id": "block_completion_000610", "completion": "\t\tdp[i] = 1;\r\n\t\t\t\tfor(int j=1;j<=n;j++)\r\n\t\t\t\t{\r\n\t\t\t\t\tdp[i] = 1;\r\n\t\t\t\t\tdp[i] = 1 + dp[i];\r\n\t\t\t\t}\r\n"}
+{"task_id": "block_completion_000611", "completion": "   int i = pos + array[pos];\n                    array[pos] = array[pos] + array[pos];\n                    pos++;\n"}
+{"task_id": "block_completion_000612", "completion": "int[] a=new int[A.length];\r\n           for(int i=0;i<A.length;i++)\r\n               a[i]=new int[A.length];\r\n           for(int i=0;i<A.length;i++)\r\n               a[i]=new int[A.length];\r\n           for(int i=0;i<A.length;i++)\r\n               a[i]=new int[A.length];\r\n           for(int i=0;i<A.length;i++)\r\n               "}
+{"task_id": "block_completion_000613", "completion": "dp[j] = true;\r\n"}
+{"task_id": "block_completion_000614", "completion": "dp[i] = 1;\r\n"}
+{"task_id": "block_completion_000615", "completion": "\t\t\t\tc++;\r\n\t\t\t\t\ta[i] = a[i+1];\r\n"}
+{"task_id": "block_completion_000616", "completion": "ans++;\r\n"}
+{"task_id": "block_completion_000617", "completion": "\t\t\t\t\tflag=1;\r\n"}
+{"task_id": "block_completion_000618", "completion": "k-=1;\r\n"}

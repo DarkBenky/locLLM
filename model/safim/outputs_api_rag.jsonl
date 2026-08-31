@@ -1,1 +1,5 @@
 {"task_id": "api_completion_000000", "completion": "// Generates a random state with time"}
+{"task_id": "api_completion_000001", "completion": "gmp_randinit_mt(random_state)"}
+{"task_id": "api_completion_000002", "completion": "return value;\n}\n\nmpz_class GenerateRandomInt(int n)"}
+{"task_id": "api_completion_000003", "completion": "out, out.data()"}
+{"task_id": "api_completion_000004", "completion": "return ret;\n}\n\nmpz_class GetLimbSize(const mpz_class& value)"}
