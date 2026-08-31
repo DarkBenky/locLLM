@@ -27,8 +27,10 @@ wandb
 datasets
 httpx
 tqdm
-tree-sitter
-tree-sitter-language-pack
+# Only needed for SAFIM eval scoring (NOT for training/inference).
+# Python 3.9+ required (py3.8 has no compatible wheels):
+# tree-sitter
+# tree-sitter-language-pack
 
 # Optional (uncomment for 8-bit AdamW optimizer):
 # bitsandbytes
