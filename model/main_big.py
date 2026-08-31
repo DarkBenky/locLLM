@@ -1099,12 +1099,13 @@ if __name__ == "__main__":
             logits_c = model.lm_head(hidden[:, s:e])
             yc = y[:, s:e]
             mc = mask[:, s:e]
+            n_chunk = mc.sum().item()  # tokens actually evaluated for acc (chunk only)
             correct += (logits_c.argmax(dim=-1)[mc] == yc[mc]).sum().item()
             pr = F.cross_entropy(
                 logits_c.view(-1, logits_c.size(-1)), yc.reshape(-1), reduction="none",
             ).view_as(yc)
             per_row[:, s:e] = pr
-            acc = correct / max(n_tok, 1)
+            acc = correct / max(n_chunk, 1)
             row_real = mask.sum(dim=-1).float()
             row_counts = mc.sum(dim=-1).float().clamp(min=1)  # only the evaluated chunk
             row_loss = per_row[:, s:e].sum(dim=-1) / row_counts
