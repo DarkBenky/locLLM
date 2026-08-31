@@ -33,8 +33,8 @@ from checkpoint_sample import record_raw_tokens, record_fim_sample, run_checkpoi
 import chatml
 
 API = "http://91.98.145.193:8823"
-FIM_API = "http://localhost:8823"
-FIM_SEARCH_API = "http://localhost:8234/search"
+FIM_API = "http://91.98.145.193:8823"
+FIM_SEARCH_API = "http://91.98.145.193:8234/search"
 CONTEXT_MAX_TOKENS = 1024
 
 TOKENIZER_MODEL_PATH = "../tok/tokenize/tokenizer_models/tokenizer.model"
@@ -82,7 +82,7 @@ LOSS_CHUNK = 1024  # sequence-chunk size for head+loss (bounds logits memory;
                     # 1024 keeps peak logits ~0.4GB at B=8; 2048 is faster but +~0.4GB)
 
 LOG_EVERY = 10
-CKPT_EVERY = 75
+CKPT_EVERY = 125
 EVAL_EVERY = 125
 EVAL_FIRST_AFTER = 10  # run one early eval after N steps (fail-fast sanity check)
 EVAL_SAMPLES = 64
