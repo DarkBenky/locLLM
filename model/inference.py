@@ -24,6 +24,7 @@ HEAD_DIM = DIM // N_HEADS
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 DTYPE = torch.bfloat16
+PROF = os.environ.get("LOCLLM_PROFILE") == "1"
 
 
 def latest_checkpoint(ckpt_dir=CKPT_DIR):
@@ -150,7 +151,8 @@ class InferenceEngine:
             x = x + block.attn.out_proj(out)
             x = x + block.ffn(block.ffn_norm(x))
         x = self.model.final_norm(x)
-        return self.model.lm_head(x)
+        # Only the last position's logits are needed for sampling
+        return self.model.lm_head(x[:, -1:])
 
     def _decode_step(self, token, pos):
         x = self.model.tok_emb(token)
@@ -167,8 +169,20 @@ class InferenceEngine:
         return self.final(x, out)
 
     @staticmethod
-    def _sample(logits, temperature, top_k, top_p, gen):
+    def _sample(logits, temperature, top_k, top_p, gen,
+                freq_pen=0.0, pres_pen=0.0, counts=None):
         logits = logits[:, -1, :]
+        if counts and (freq_pen > 0.0 or pres_pen > 0.0):
+            # OpenAI-style repetition control applied to logits before sampling:
+            #   frequency_penalty: subtract fp * count(token)
+            #   presence_penalty:  subtract pp if token appeared at all
+            ids = list(counts.keys())
+            if ids:
+                idx = torch.tensor(ids, device=logits.device)
+                pen = torch.tensor(
+                    [freq_pen * counts[i] + pres_pen for i in ids],
+                    device=logits.device, dtype=logits.dtype)
+                logits[0, idx] -= pen
         if temperature <= 0:
             return logits.argmax().item()
         logits = logits / temperature
@@ -190,14 +204,18 @@ class InferenceEngine:
         probs = probs / total
         return torch.multinomial(probs, num_samples=1, generator=gen).item()
 
-    def _decode_loop(self, last, pos, max_new_tokens, temperature, top_k, top_p, gen, stop_tokens=None):
+    def _decode_loop(self, last, pos, max_new_tokens, temperature, top_k, top_p, gen, stop_tokens=None,
+                     freq_pen=0.0, pres_pen=0.0):
         stop = set(stop_tokens) if stop_tokens else None
+        counts = {}
         for _ in range(max_new_tokens):
             logits = self._decode_step(last.unsqueeze(0), pos)
-            tok = self._sample(logits, temperature, top_k, top_p, gen)
+            tok = self._sample(logits, temperature, top_k, top_p, gen,
+                               freq_pen, pres_pen, counts)
             if stop is not None and tok in stop:
                 break
             yield tok
+            counts[tok] = counts.get(tok, 0) + 1
             last = torch.tensor([tok], dtype=torch.long, device=self.device)
             pos += 1
 
@@ -209,7 +227,8 @@ class InferenceEngine:
                    self.ctx_start: "<context_start>", self.ctx_end: "</context_end>",
                    self.lang_open: "<lang>", self.lang_close: "</lang>"})
 
-    def generate(self, prompt_ids, max_new_tokens=256, temperature=1.0, top_k=0, top_p=1.0, seed=None, stop_tokens=None):
+    def generate(self, prompt_ids, max_new_tokens=256, temperature=1.0, top_k=0, top_p=1.0,
+                 seed=None, stop_tokens=None, frequency_penalty=0.0, presence_penalty=0.0):
         gen = None
         if seed is not None:
             gen = torch.Generator(device=self.device)
@@ -223,7 +242,8 @@ class InferenceEngine:
             self._prefill(prompt.unsqueeze(0))
             last = prompt[-1:].clone()
             pos = prompt.numel() - 1
-            yield from self._decode_loop(last, pos, max_new_tokens, temperature, top_k, top_p, gen, stop_tokens)
+            yield from self._decode_loop(last, pos, max_new_tokens, temperature, top_k, top_p, gen,
+                                         stop_tokens, frequency_penalty, presence_penalty)
 
     def _lang_tensor(self, lang: str):
         ids = self.sp.encode(lang.strip().lower(), out_type=int)
@@ -231,7 +251,8 @@ class InferenceEngine:
                             dtype=torch.long, device=self.device)
 
     def generate_fim(self, prefix_ids, suffix_ids, max_new_tokens=256, temperature=1.0,
-                     top_k=0, top_p=1.0, seed=None, lang=None, context_ids=None):
+                     top_k=0, top_p=1.0, seed=None, lang=None, context_ids=None,
+                     frequency_penalty=0.0, presence_penalty=0.0):
         gen = None
         if seed is not None:
             gen = torch.Generator(device=self.device)
@@ -254,15 +275,26 @@ class InferenceEngine:
         limit = max(1, BLOCK_SIZE - max_new_tokens)
         prompt = prompt[-limit:]
         with torch.inference_mode():
+            t0p = time.perf_counter()
             self._prefill(prompt.unsqueeze(0))
+            if PROF:
+                print(f"[profile] fim prefill {prompt.numel()} tok: "
+                      f"{time.perf_counter() - t0p:.3f}s", flush=True)
             last = prompt[-1:].clone()
             pos = prompt.numel() - 1
-            for _ in range(max_new_tokens):
+            counts = {}
+            t0s = time.perf_counter()
+            for i in range(max_new_tokens):
                 logits = self._decode_step(last.unsqueeze(0), pos)
-                tok = self._sample(logits, temperature, top_k, top_p, gen)
+                tok = self._sample(logits, temperature, top_k, top_p, gen,
+                                   frequency_penalty, presence_penalty, counts)
+                if PROF and (i < 3 or i % 16 == 0):
+                    print(f"[profile] fim step {i + 1}: "
+                          f"{time.perf_counter() - t0s:.3f}s", flush=True)
                 if tok == self.fim_end:
                     break
                 yield tok
+                counts[tok] = counts.get(tok, 0) + 1
                 last = torch.tensor([tok], dtype=torch.long, device=self.device)
                 pos += 1
 

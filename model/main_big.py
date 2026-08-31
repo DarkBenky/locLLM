@@ -69,7 +69,7 @@ CHATML_MASK_PROB = 0.8
 FIM_RATIO = 0.95
 FIM_VARIANTS = 1  # FIM samples generated per code sample
 FIM_MAX_SAMPLE_TOKENS = 0  # 0 = no cap (full window); e.g. 2048 trades quality for ~1.8x speed
-NO_CONTEXT_PROB = 0.3  # Phase C: drop RAG context for this fraction of FIM samples (robustness)
+NO_CONTEXT_PROB = 0.5  # 50/50: half of FIM samples get RAG context, half train without it
 # SAFIM-style short-span emphasis: benchmark completions are mostly one-liners
 # (e.g. api calls, control-flow expressions), not long chunks. Keep ~60% of FIM
 # middles at line level and only ~13% up to the full window budget.

@@ -1,3 +1,4 @@
+import asyncio
 import json
 import os
 import sys
@@ -31,6 +32,13 @@ RAG_LANG_ALIASES = {"golang": "go", "cpp": "c++"}
 _rag_session = requests.Session()
 _rag_warned = False
 
+# Repetition suppression defaults (used when clients send 0 / omit them).
+# frequency: penalizes tokens by how often they were generated; presence:
+# penalizes any token that already appeared. Tune FREQ up for stronger
+# anti-repeat, PRES up to avoid echoing identifiers.
+FREQ_PENALTY_DEFAULT = 0.8
+PRESENCE_PENALTY_DEFAULT = 0.2
+
 app = FastAPI()
 
 
@@ -58,6 +66,11 @@ class FIMRequest(BaseModel):
     use_rag: bool = False
     rag_top_k: int = 1
     rag_query: str | None = None
+    # Repetition control (OpenAI-compatible). Values <= 0 fall back to the
+    # server defaults (FREQ_PENALTY_DEFAULT / PRESENCE_PENALTY_DEFAULT) so
+    # autocomplete stops repeating itself even when clients send 0.
+    frequency_penalty: float = 0.0
+    presence_penalty: float = 0.0
 
 
 class OpenAICompletionRequest(BaseModel):
@@ -74,6 +87,9 @@ class OpenAICompletionRequest(BaseModel):
     # and RAG context retrieval (like /generate_fim use_rag).
     lang: str | None = None
     use_rag: bool = False
+    # Repetition control (OpenAI-compatible); <= 0 -> server defaults.
+    frequency_penalty: float = 0.0
+    presence_penalty: float = 0.0
 
 
 class OpenAIChatRequest(BaseModel):
@@ -172,6 +188,35 @@ def sse_stream(tokens):
     yield f"data: {json.dumps({'done': True, 'text': engine.decode(buf)})}\n\n"
 
 
+def _next_or_stop(gen):
+    try:
+        return "ok", next(gen)
+    except StopIteration:
+        return "stop", None
+
+
+async def _iter_generation(gen):
+    """Stream tokens from the engine's sync generator without buffering.
+
+    The GPU lock is held for the WHOLE generation (the engine shares one KV
+    cache, so runs must not interleave). Each token is pulled via a worker
+    thread; if the client disconnects, the in-flight decode step is allowed
+    to finish (bounded to ~1 step) before the lock is released, so cancelled
+    streams can never wedge subsequent requests.
+    """
+    with _lock:
+        while True:
+            task = asyncio.create_task(asyncio.to_thread(_next_or_stop, gen))
+            try:
+                status, tok = await asyncio.shield(task)
+            except asyncio.CancelledError:
+                await asyncio.shield(task)
+                raise
+            if status == "stop":
+                return
+            yield tok
+
+
 # --- completion logging (for later fine-tuning) -----------------------------
 
 _COMPLETIONS_LOG = os.path.join(BASE, "log", "completions.jsonl")
@@ -191,19 +236,26 @@ def _log_completion(entry: dict):
 def generate(req: GenerateRequest):
     ids = engine.sp.encode(req.prompt)
 
-    def stream():
-        with _lock:
-            toks = list(engine.generate(
+    async def stream():
+        t0 = time.time()
+        buf, prev = [], ""
+        async for tok in _iter_generation(engine.generate(
                 ids, req.max_tokens, req.temperature,
                 req.top_k, req.top_p, req.seed,
-                stop_tokens={engine.fim_end, engine.im_end}))
+                stop_tokens={engine.fim_end, engine.im_end})):
+            buf.append(tok)
+            text = engine.decode(buf)
+            chunk = text[len(prev):]
+            prev = text
+            if chunk:
+                yield f"data: {json.dumps({'text': chunk})}\n\n"
+        yield f"data: {json.dumps({'done': True, 'text': engine.decode(buf)})}\n\n"
         _log_completion({
             "kind": "plain", "model": "locllm-1.6b", "stream": True,
             "prompt": req.prompt, "suffix": "", "lang": None, "use_rag": False,
-            "completion": engine.decode(toks), "n_tokens": len(toks),
-            "latency_s": None, "endpoint": "/generate",
+            "completion": engine.decode(buf), "n_tokens": len(buf),
+            "latency_s": round(time.time() - t0, 3), "endpoint": "/generate",
         })
-        yield from sse_stream(toks)
 
     return StreamingResponse(stream(), media_type="text/event-stream")
 
@@ -219,21 +271,29 @@ def _run_fim(req: FIMRequest):
     else:
         context_ids = None
 
-    def stream():
-        with _lock:
-            t0 = time.time()
-            toks = list(engine.generate_fim(
+    async def stream():
+        t0 = time.time()
+        buf, prev = [], ""
+        freq, pres = _penalties(req)
+        async for tok in _iter_generation(engine.generate_fim(
                 prefix_ids, suffix_ids, req.max_tokens,
                 req.temperature, req.top_k, req.top_p, req.seed,
-                lang=req.lang, context_ids=context_ids))
+                lang=req.lang, context_ids=context_ids,
+                frequency_penalty=freq, presence_penalty=pres)):
+            buf.append(tok)
+            text = engine.decode(buf)
+            chunk = text[len(prev):]
+            prev = text
+            if chunk:
+                yield f"data: {json.dumps({'text': chunk})}\n\n"
+        yield f"data: {json.dumps({'done': True, 'text': engine.decode(buf)})}\n\n"
         _log_completion({
             "kind": "fim", "model": "locllm-1.6b", "stream": True,
             "prompt": req.prefix, "suffix": req.suffix,
             "lang": req.lang, "use_rag": req.use_rag,
-            "completion": engine.decode(toks), "n_tokens": len(toks),
+            "completion": engine.decode(buf), "n_tokens": len(buf),
             "latency_s": round(time.time() - t0, 3), "endpoint": "/generate_fim",
         })
-        yield from sse_stream(toks)
 
     return StreamingResponse(stream(), media_type="text/event-stream")
 
@@ -255,8 +315,14 @@ def generate_fim_rag(req: FIMRequest):
 # OpenAI-compatible endpoints (for Continue tab-autocomplete, LM Studio, etc.)
 # ---------------------------------------------------------------------------
 
-def _openai_tokens(req: OpenAICompletionRequest):
-    """FIM generation with auto-detected <lang> conditioning.
+def _penalties(req) -> tuple[float, float]:
+    freq = req.frequency_penalty if req.frequency_penalty > 0 else FREQ_PENALTY_DEFAULT
+    pres = req.presence_penalty if req.presence_penalty > 0 else PRESENCE_PENALTY_DEFAULT
+    return freq, pres
+
+
+def _openai_token_iter(req: OpenAICompletionRequest):
+    """Lazy FIM generator for /v1/completions (used by true streaming).
 
     Always uses the trained FIM format (<fim_prefix><lang>..</lang>pre<fim_suffix>
     ..<fim_middle>); suffix is empty when the client didn't send one, so the
@@ -270,9 +336,15 @@ def _openai_tokens(req: OpenAICompletionRequest):
     if req.use_rag:
         context_ids = _build_rag_context(req.prompt, suffix_text, 1, None,
                                          req.max_tokens)
-    return engine.generate_fim(prompt_ids, suffix_ids, req.max_tokens,
-                               req.temperature, 0, req.top_p, None,
-                               lang=lang, context_ids=context_ids)
+    freq, pres = _penalties(req)
+    yield from engine.generate_fim(prompt_ids, suffix_ids, req.max_tokens,
+                                   req.temperature, 0, req.top_p, None,
+                                   lang=lang, context_ids=context_ids,
+                                   frequency_penalty=freq, presence_penalty=pres)
+
+
+def _openai_tokens(req: OpenAICompletionRequest):
+    return list(_openai_token_iter(req))
 
 
 @app.get("/v1/models")
@@ -301,13 +373,11 @@ def v1_completions(req: OpenAICompletionRequest):
         })
 
     if req.stream:
-        def stream():
-            with _lock:
-                t0 = time.time()
-                toks = list(_openai_tokens(req))
+        async def stream():
+            t0 = time.time()
             buf = []
             prev = ""
-            for tok in toks:
+            async for tok in _iter_generation(_openai_token_iter(req)):
                 buf.append(tok)
                 text = engine.decode(buf)
                 chunk = text[len(prev):]
@@ -320,7 +390,7 @@ def v1_completions(req: OpenAICompletionRequest):
                 "kind": "openai", "model": req.model, "stream": True,
                 "prompt": req.prompt, "suffix": req.suffix or "",
                 "lang": lang, "use_rag": req.use_rag,
-                "completion": engine.decode(toks), "n_tokens": len(toks),
+                "completion": engine.decode(buf), "n_tokens": len(buf),
                 "latency_s": round(time.time() - t0, 3), "endpoint": "/v1/completions",
             })
         return StreamingResponse(stream(), media_type="text/event-stream")
@@ -368,7 +438,9 @@ def v1_chat_completions(req: OpenAIChatRequest):
     def _chat_tokens(prompt: str):
         lang = infer_code_lang(prompt)
         return engine.generate_fim(engine.sp.encode(prompt), [], req.max_tokens,
-                                   req.temperature, 0, req.top_p, None, lang=lang)
+                                   req.temperature, 0, req.top_p, None, lang=lang,
+                                   frequency_penalty=FREQ_PENALTY_DEFAULT,
+                                   presence_penalty=PRESENCE_PENALTY_DEFAULT)
 
     def _chat_response(tokens, t0):
         text = engine.decode(tokens)
@@ -396,12 +468,10 @@ def v1_chat_completions(req: OpenAIChatRequest):
         return {"error": "empty messages"}
 
     if req.stream:
-        def stream():
-            with _lock:
-                t0 = time.time()
-                toks = list(_chat_tokens(prompt))
+        async def stream():
+            t0 = time.time()
             buf, prev = [], ""
-            for tok in toks:
+            async for tok in _iter_generation(_chat_tokens(prompt)):
                 buf.append(tok)
                 text = engine.decode(buf)
                 chunk = text[len(prev):]
@@ -410,7 +480,7 @@ def v1_chat_completions(req: OpenAIChatRequest):
                     yield f"data: {json.dumps({'choices': [{'index': 0, 'delta': {'content': chunk}, 'finish_reason': None}]})}\n\n"
             yield f"data: {json.dumps({'choices': [{'index': 0, 'delta': {}, 'finish_reason': 'stop'}]})}\n\n"
             yield "data: [DONE]\n\n"
-            _chat_response(toks, t0)
+            _chat_response(buf, t0)
         return StreamingResponse(stream(), media_type="text/event-stream")
 
     with _lock:

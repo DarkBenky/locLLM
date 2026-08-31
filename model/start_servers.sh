@@ -1,17 +1,20 @@
 #!/usr/bin/env bash
-# Launch the locLLM service stack (RAG + inference API) — default on the RTX 3060.
+# Launch the locLLM service stack — default on the RTX 3060.
 #
 # Usage:
-#   ./model/start_servers.sh            start RAG (:8234) + inference API (:8000) on GPU 1 (RTX 3060)
-#   GPU=0 ./model/start_servers.sh      start both on torch CUDA index 0 (RTX 3090)
-#   ./model/start_servers.sh stop       stop both services
-#   ./model/start_servers.sh status     show health of both
+#   ./model/start_servers.sh              start inference API (:8000) on GPU 1 (RTX 3060) — RAG OFF by default
+#   START_RAG=1 ./model/start_servers.sh  ALSO start the RAG service (:8234)
+#   GPU=0 ./model/start_servers.sh        start inference on torch CUDA index 0 (RTX 3090)
+#   ./model/start_servers.sh stop         stop both services (RAG only if running)
+#   ./model/start_servers.sh status       show health of both
 #
 # Notes:
 #   - torch.cuda index vs nvidia-smi are SWAPPED on this machine:
 #       torch idx 0 = RTX 3090 | torch idx 1 = RTX 3060 (default).
 #   - The RAG server needs --gpu <local-index> (its GPU picker is otherwise
 #     interactive); with CUDA_VISIBLE_DEVICES=1 the local index is 0.
+#   - RAG is opt-in: the inference API defaults use_rag=false (autocomplete is
+#     no-RAG), so the embedding server only costs VRAM unless explicitly needed.
 set -u
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -26,6 +29,7 @@ INF_PID="$PIDS_DIR/infrance.pid"
 
 GPU="${GPU:-1}"           # torch CUDA index (1 = RTX 3060)
 RAG_LOCAL_GPU=0           # index inside CUDA_VISIBLE_DEVICES (after filtering)
+START_RAG="${START_RAG:-0}"  # opt-in: 1 = also start RAG (:8234)
 
 RAG_URL="http://localhost:8234/health"
 INF_URL="http://localhost:8000/health"
@@ -134,7 +138,11 @@ status_all() {
 case "${1:-start}" in
   start)
     status_all
-    start_rag || log "RAG failed to start (inference can still run without it)"
+    if [ "$START_RAG" = "1" ]; then
+      start_rag || log "RAG failed to start (inference can still run without it)"
+    else
+      log "RAG skipped (default off). Set START_RAG=1 to enable it."
+    fi
     start_inf
     log "done. RAG: $RAG_URL | inference: $INF_URL | GPU: $GPU"
     ;;
@@ -146,7 +154,7 @@ case "${1:-start}" in
     status_all
     ;;
   *)
-    echo "usage: $0 [start|stop|status]" >&2
+    echo "usage: $0 [start|stop|status]   (START_RAG=1 to also start RAG)" >&2
     exit 1
     ;;
 esac
