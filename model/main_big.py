@@ -1087,8 +1087,8 @@ if __name__ == "__main__":
             per_row[:, s:e] = pr
             acc = correct / max(n_tok, 1)
             row_real = mask.sum(dim=-1).float()
-            row_counts = row_real.clamp(min=1)
-            row_loss = per_row.sum(dim=-1) / row_counts
+            row_counts = mc.sum(dim=-1).float().clamp(min=1)  # only the evaluated chunk
+            row_loss = per_row[:, s:e].sum(dim=-1) / row_counts
             cat_stats = {}
             for j, cat in enumerate(cats):
                 key = f"fim/{cat}" if fim_flags[j] else f"lm/{cat}"
