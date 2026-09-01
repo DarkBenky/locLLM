@@ -1580,9 +1580,15 @@ if __name__ == "__main__":
 
         if step > 0 and step % CKPT_EVERY == 0:
             ckpt_path = f"{CKPT_DIR}/{CKPT_PREFIX}{step}.pt"
-            torch.save({"model": model.state_dict(), "optimizer": optimizer.state_dict(),
-                        "step": step}, ckpt_path)
-            print(f"saved checkpoint: {ckpt_path}")
+            # LOCLLM_OPT_EVERY=4 -> optimizer state saved only every 4th ckpt
+            # (halves most checkpoint files: model-only ~6.4GB vs 12.9GB).
+            _opt_every = int(os.environ.get("LOCLLM_OPT_EVERY", "1"))
+            _save_opt = _opt_every <= 1 or (step // CKPT_EVERY) % _opt_every == 0
+            ckpt_data = {"model": model.state_dict(), "step": step}
+            if _save_opt:
+                ckpt_data["optimizer"] = optimizer.state_dict()
+            torch.save(ckpt_data, ckpt_path)
+            print(f"saved checkpoint: {ckpt_path}" + ("" if _save_opt else " (model only)"))
             if FIM_MODE:
                 run_fim_checkpoint_sample(step, model, sp, BLOCK_SIZE, DEVICE)
             else:
