@@ -31,6 +31,7 @@ from questionary import Style
 from model import Transformer
 from checkpoint_sample import record_raw_tokens, record_fim_sample, run_checkpoint_sample, run_fim_checkpoint_sample
 import chatml
+from synth_eval_cases import SYNTH_EVAL_CASES, load_eval_items, save_eval_items
 
 API = "http://91.98.145.193:8823"
 FIM_API = "http://91.98.145.193:8823"
@@ -48,6 +49,12 @@ DIM = 1024
 N_LAYERS = 128
 OLD_N_LAYERS = 26
 N_HEADS = 16
+
+# Non-destructive FFN widening: target hidden dim = DIM * ratio (3584 at 3.5x).
+# Override with LOCLLM_FFN_RATIO (e.g. 3.0 -> 3072, ~1.73B, tighter on VRAM).
+# Trained weights are kept; only the newly added FFN rows/cols are fresh.
+FFN_EXPAND_RATIO = float(os.environ.get("LOCLLM_FFN_RATIO", "3.5"))
+NEW_FFN_HIDDEN = int(DIM * FFN_EXPAND_RATIO)
 
 RESUME_FROM_CHECKPOINT = True
 UPSCALE_ON_RESUME = True
@@ -91,6 +98,12 @@ FIM_EVAL_GEN_SAMPLES = 4
 FIM_EVAL_GEN_TOKENS = 32
 CKPT_DIR = "./checkpoints"
 
+# --- deterministic eval instrumentation --------------------------------------
+# Eval-set paths; the synthetic cases + persist helpers live in
+# model/synth_eval_cases.py (kept out of this file on purpose).
+EVAL_LM_PATH = os.path.join(CKPT_DIR, "eval_set_lm.json")
+EVAL_FIM_PATH = os.path.join(CKPT_DIR, "eval_set_fim.json")
+
 PRECISION = "bf16"
 MODEL_DTYPE = torch.bfloat16 if PRECISION == "bf16" else torch.float32
 
@@ -121,6 +134,7 @@ ROLE_ASSISTANT = CHATML_IDS["roles"]["assistant"]
 
 UPSCALED = False
 VOCAB_RESIZED = False
+FFN_WIDENED = False
 CKPT_PREFIX = "step_big_"
 
 
@@ -234,6 +248,28 @@ def resize_vocab_embeddings(model, old_sd, old_vocab):
             new_sd[k] = w
         else:
             new_sd[k] = v
+    missing, unexpected = model.load_state_dict(new_sd, strict=False)
+    return missing, unexpected
+
+
+def expand_ffn(model, old_sd, old_hidden):
+    """Non-destructive FFN widening. Old w_gate/w_up rows and w_down columns keep
+    their trained values; new w_gate/w_up rows keep the model's fresh init; new
+    w_down columns are ZEROED so the residual stream (and the loss) is unchanged
+    at step 0 — output-neutral by construction."""
+    new_sd = model.state_dict()
+    for k, v in old_sd.items():
+        if k not in new_sd or v.ndim != new_sd[k].ndim:
+            continue
+        if k.endswith(".ffn.w_gate.weight") or k.endswith(".ffn.w_up.weight"):
+            new_sd[k][:old_hidden] = v
+        elif k.endswith(".ffn.w_down.weight"):
+            new_sd[k][:, :old_hidden] = v
+        elif new_sd[k].shape == v.shape:
+            new_sd[k] = v
+    for k in list(new_sd):
+        if k.endswith(".ffn.w_down.weight"):
+            new_sd[k][:, old_hidden:] = 0
     missing, unexpected = model.load_state_dict(new_sd, strict=False)
     return missing, unexpected
 
@@ -846,26 +882,31 @@ def make_batch(batch_size: int, block_size: int):
     return x.to(DEVICE), y.to(DEVICE), cats, fim_flags
 
 
+def _abs_lr(step: int) -> float:
+    """Absolute cosine schedule (based on the global step count)."""
+    if step < WARMUP_STEPS:
+        return MAX_LR * (step + 1) / WARMUP_STEPS
+    if step >= LR_DECAY_STEPS:
+        return MIN_LR
+    decay_ratio = (step - WARMUP_STEPS) / (LR_DECAY_STEPS - WARMUP_STEPS)
+    coeff = 0.5 * (1 + math.cos(math.pi * decay_ratio))
+    return MIN_LR + coeff * (MAX_LR - MIN_LR)
+
+
 def get_lr(step: int, step0: int = 0) -> float:
-    # Wake-up phase (fresh on each resume, relative to start_step): new/upscaled
-    # weights get a short burst at WAKEUP_LR before the main schedule takes over.
+    # Wake-up phase: only active after an actual structural change (layer
+    # upscale, vocab resize or FFN widen, flagged UPSCALED/VOCAB_RESIZED/
+    # FFN_WIDENED). A normal resume of a regular checkpoint leaves all flags
+    # False -> pure absolute schedule.
     s_rel = step - step0
     wake = VOCAB_WAKEUP_STEPS if VOCAB_RESIZED else WAKEUP_STEPS
-    if (UPSCALED or VOCAB_RESIZED) and s_rel < wake:
-        return WAKEUP_LR * min((s_rel + 1) / WARMUP_STEPS, 1.0)
+    if (UPSCALED or VOCAB_RESIZED or FFN_WIDENED) and s_rel < wake:
+        lr = WAKEUP_LR * min((s_rel + 1) / WARMUP_STEPS, 1.0)
+        # never exceed the scheduled LR at this step: prevents a surprise 1e-4
+        # burst on a mid-training resume from disturbing already-trained weights
+        return min(lr, _abs_lr(step))
 
-    # Main cosine schedule is based on the ABSOLUTE step so it never restarts at
-    # MAX_LR on resume (previously the schedule reset every run, pinning LR ~max).
-    s = step
-    if s < WARMUP_STEPS:
-        lr = MAX_LR * (s + 1) / WARMUP_STEPS
-    elif s >= LR_DECAY_STEPS:
-        lr = MIN_LR
-    else:
-        decay_ratio = (s - WARMUP_STEPS) / (LR_DECAY_STEPS - WARMUP_STEPS)
-        coeff = 0.5 * (1 + math.cos(math.pi * decay_ratio))
-        lr = MIN_LR + coeff * (MAX_LR - MIN_LR)
-    return max(0.0, lr)
+    return max(0.0, _abs_lr(step))
 
 
 if __name__ == "__main__":
@@ -896,7 +937,8 @@ if __name__ == "__main__":
     OPTIMIZER = gpu.get("optimizer", "fp32")
     print(f"\nTraining on: {gpu['name']} ({gpu.get('vram_size', 0):.1f} GB) | "
           f"batch_size={BATCH_SIZE} | accum={GRAD_ACCUM} | optimizer={OPTIMIZER} | "
-          f"effective batch ≈ {BATCH_SIZE * BLOCK_SIZE * GRAD_ACCUM:,} tokens/step")
+          f"context batch ≈ {BATCH_SIZE * BLOCK_SIZE * GRAD_ACCUM:,} tokens/step "
+          f"(SUPERVISED tokens/step are far fewer — see the 'sup' column in the log)")
 
     os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu["index"])
 
@@ -913,6 +955,19 @@ if __name__ == "__main__":
 
     CODE_CATEGORY_IDS, CAT_NAME_BY_ID = get_category_index()
     print(f"Code categories for FIM: {len(CODE_CATEGORY_IDS)} IDs")
+    CAT_ID_BY_NAME = {name: cid for cid, name in CAT_NAME_BY_ID.items()}
+
+    # Adopt the FFN width of the latest migrated checkpoint when no explicit
+    # ratio is given (LOCLLM_FFN_RATIO overrides). Prevents the "checkpoint is
+    # wider than this run's model" crash on resume.
+    _ffn_meta = os.path.join(CKPT_DIR, "ffn_hidden.json")
+    if "LOCLLM_FFN_RATIO" not in os.environ and os.path.exists(_ffn_meta):
+        with open(_ffn_meta) as f:
+            _meta = json.load(f)
+        NEW_FFN_HIDDEN = int(_meta["ffn_hidden"])
+        FFN_EXPAND_RATIO = float(_meta.get("ratio", NEW_FFN_HIDDEN / DIM))
+        print(f"FFN width from checkpoint meta: {NEW_FFN_HIDDEN} "
+              f"(set LOCLLM_FFN_RATIO to override)", flush=True)
 
     samples = get_next_samples(1)
     if samples:
@@ -920,9 +975,10 @@ if __name__ == "__main__":
         print(tokens[:20])
         print(sp.decode(tokens)[:200])
 
-    print("building model (128 layers, ~1.6B params) ...", flush=True)
+    print(f"building model ({N_LAYERS} layers, dim {DIM}, FFN {NEW_FFN_HIDDEN} hidden) ...", flush=True)
     model = Transformer(vocab_size=VOCAB_SIZE, dim=DIM, n_layers=N_LAYERS, n_heads=N_HEADS,
-                         max_seq_len=BLOCK_SIZE, rope_base=ROPE_BASE).to(DEVICE)
+                         max_seq_len=BLOCK_SIZE, rope_base=ROPE_BASE,
+                         ffn_hidden=NEW_FFN_HIDDEN).to(DEVICE)
     if MODEL_DTYPE != torch.float32:
         model.to(MODEL_DTYPE)
     print(f"model dtype: {MODEL_DTYPE}", flush=True)
@@ -981,20 +1037,49 @@ if __name__ == "__main__":
             if ckpt_layers != N_LAYERS:
                 raise RuntimeError(f"big checkpoint {latest} has {ckpt_layers} layers, expected {N_LAYERS}")
             ckpt_vocab = sd["tok_emb.weight"].shape[0]
+            ckpt_ffn = sd["blocks.0.ffn.w_gate.weight"].shape[0]
+            migrated = False
             if ckpt_vocab != VOCAB_SIZE:
                 if not VOCAB_RESIZE_ON_RESUME:
                     raise RuntimeError(f"checkpoint {latest} has vocab {ckpt_vocab}, expected {VOCAB_SIZE}")
                 print(f"Resizing vocab {ckpt_vocab} -> {VOCAB_SIZE}", flush=True)
                 resize_vocab_embeddings(model, sd, ckpt_vocab)
                 VOCAB_RESIZED = True
-                _load_optimizer_state(optimizer, ckpt, model, old_vocab=ckpt_vocab)
-            else:
+                migrated = True
+            if ckpt_ffn != NEW_FFN_HIDDEN:
+                if ckpt_ffn > NEW_FFN_HIDDEN:
+                    raise RuntimeError(
+                        f"checkpoint {latest} FFN {ckpt_ffn} is WIDER than this run's target "
+                        f"{NEW_FFN_HIDDEN} — set LOCLLM_FFN_RATIO={ckpt_ffn / DIM} "
+                        f"(or unset it to adopt the checkpoint width)")
+                print(f"Widening FFN {ckpt_ffn} -> {NEW_FFN_HIDDEN} (zero-init w_down, output-neutral)",
+                      flush=True)
+                expand_ffn(model, sd, ckpt_ffn)
+                FFN_WIDENED = True
+                migrated = True
+            if not migrated:
                 model.load_state_dict(sd)
                 if "optimizer" in ckpt:
                     _load_optimizer_state(optimizer, ckpt, model)
                 else:
-                    UPSCALED = True
+                    print("  no optimizer state in checkpoint — starting optimizer fresh", flush=True)
+            elif VOCAB_RESIZED and not FFN_WIDENED:
+                # vocab-only resize: splice the optimizer state for the new rows
+                _load_optimizer_state(optimizer, ckpt, model, old_vocab=ckpt_vocab)
+            else:
+                # FFN widen (or both): optimizer state shapes no longer match ->
+                # start the optimizer fresh. Safe: zero-init keeps the output
+                # identical at step 0.
+                print("  optimizer restarted fresh (FFN shapes changed)", flush=True)
             start_step = ckpt["step"] + 1
+            if migrated:
+                big_path = f"{CKPT_DIR}/{CKPT_PREFIX}{start_step - 1}_widen{NEW_FFN_HIDDEN}.pt"
+                torch.save({"model": model.state_dict(), "step": start_step - 1}, big_path)
+                os.replace(latest, latest + ".orig")
+                with open(os.path.join(CKPT_DIR, "ffn_hidden.json"), "w") as f:
+                    json.dump({"ffn_hidden": NEW_FFN_HIDDEN, "ratio": FFN_EXPAND_RATIO}, f)
+                print(f"Saved migrated big checkpoint: {big_path}")
+                print(f"Original kept as backup: {latest}.orig")
             print(f"Resuming from step {start_step}")
         elif normal_ckpts:
             latest = os.path.join(CKPT_DIR, normal_ckpts[-1])
@@ -1027,11 +1112,28 @@ if __name__ == "__main__":
                 p.requires_grad = False
         print(f"Wake-up phase: old blocks frozen for {WAKEUP_STEPS} steps")
 
+    # LR resume check: a NORMAL resume (same layers, same vocab, optimizer state
+    # present) must NOT enter the wake-up burst. Print what is active so a silent
+    # LR restart can never masquerade as "no improvement".
+    _wake_active = UPSCALED or VOCAB_RESIZED or FFN_WIDENED
+    _wake_n = VOCAB_WAKEUP_STEPS if VOCAB_RESIZED else WAKEUP_STEPS
+    _lr_at_resume = get_lr(start_step, start_step)
+    if _wake_active:
+        print(f"LR CHECK: WAKE-UP ACTIVE (upscaled={UPSCALED}, vocab_resized={VOCAB_RESIZED}, "
+              f"ffn_widened={FFN_WIDENED}) | "
+              f"LR phase for {_wake_n} steps from {start_step} (until ~{start_step + _wake_n}) | "
+              f"lr now {_lr_at_resume:.2e} (capped at scheduled LR)")
+    else:
+        print(f"LR CHECK: no wake-up burst on this resume (upscaled={UPSCALED}, "
+              f"vocab_resized={VOCAB_RESIZED}, ffn_widened={FFN_WIDENED}) | absolute cosine schedule | "
+              f"lr @ {start_step} = {_lr_at_resume:.2e}")
+
     wandb.login()
     wandb.init(project="locLMM-FIM" if FIM_MODE else "locLMM", config={
         "vocab_size": VOCAB_SIZE, "block_size": BLOCK_SIZE, "batch_size": BATCH_SIZE,
         "grad_accum": GRAD_ACCUM, "effective_batch_size": BATCH_SIZE * GRAD_ACCUM,
         "dim": DIM, "n_layers": N_LAYERS, "n_heads": N_HEADS, "upscaled_from": OLD_N_LAYERS,
+        "ffn_hidden": NEW_FFN_HIDDEN, "ffn_expand_ratio": FFN_EXPAND_RATIO,
         "wakeup_steps": WAKEUP_STEPS, "wakeup_lr": WAKEUP_LR,
         "max_lr": MAX_LR, "min_lr": MIN_LR, "max_steps": MAX_STEPS,
         "lr_decay_steps": LR_DECAY_STEPS, "params": n_params,
@@ -1121,21 +1223,67 @@ if __name__ == "__main__":
     eval_set = []
     fim_eval_set = []
 
+    def _synth_lm_eval_items():
+        """Synthetic eval cases (go/c/python/opencl) as (cat_id, tokens)."""
+        items = []
+        for lang, code in SYNTH_EVAL_CASES:
+            cid = CAT_ID_BY_NAME.get(normalize_lang(lang))
+            if cid is None:
+                print(f"  WARNING: synth eval lang '{lang}' not in category index — skipping")
+                continue
+            tokens = sp.encode(code, out_type=int)
+            if len(tokens) >= MIN_SAMPLE_TOKENS:
+                items.append((cid, tokens[:BLOCK_SIZE]))
+        return items
+
     def build_eval_set(n: int = EVAL_SAMPLES):
+        """Deterministic LM eval set: synthetic + persisted server samples.
+        Identical on every resume (previously fresh random samples per run)."""
         eval_set.clear()
-        attempts = 0
-        while len(eval_set) < n and attempts < 5:
-            attempts += 1
-            try:
-                fresh = get_next_samples(n - len(eval_set))
-            except RuntimeError:
-                break
-            if not fresh:
-                break
-            for cat, tokens in fresh:
-                if len(tokens) >= MIN_SAMPLE_TOKENS:
-                    eval_set.append((cat, tokens[:BLOCK_SIZE]))
-        print(f"Cached eval set: {len(eval_set)} samples (fixed for this run)")
+        synth = _synth_lm_eval_items()
+        eval_set.extend(synth)
+        cached = load_eval_items(EVAL_LM_PATH)
+        if cached is None:
+            items = []
+            need = max(0, n - len(eval_set))
+            attempts = 0
+            while len(items) < need and attempts < 5:
+                attempts += 1
+                try:
+                    fresh = get_next_samples(need - len(items))
+                except RuntimeError:
+                    break
+                if not fresh:
+                    break
+                for cat, tokens in fresh:
+                    if len(tokens) >= MIN_SAMPLE_TOKENS:
+                        items.append((cat, tokens[:BLOCK_SIZE]))
+            save_eval_items(EVAL_LM_PATH, [{"cat": c, "tokens": list(t)} for c, t in items])
+            cached = [{"cat": c, "tokens": list(t)} for c, t in items]
+        eval_set.extend((d["cat"], list(d["tokens"])) for d in cached)
+        print(f"Eval set: {len(eval_set)} samples ({len(synth)} synthetic + {len(cached)} cached server) "
+              f"— persistent: {EVAL_LM_PATH}")
+
+    def _fim_eval_split(tokens, fim_cap):
+        """Deterministic FIM split for an eval sample, or None if unusable."""
+        tokens = tokens[:fim_cap]
+        L = len(tokens)
+        if L < 200:
+            return None
+        pre_end = _snap_newline(tokens, max(32, L // 2))
+        mid_end = _snap_newline(tokens, pre_end + max(16, min(L // 4, L - pre_end - 1)))
+        if mid_end <= pre_end or mid_end >= L:
+            return None
+        return tokens, pre_end, mid_end
+
+    def _fim_eval_item(cat, tokens, pre_end, mid_end, lang):
+        """Build the (cat, tokens, pre_end, mid_end, context, lang) eval item."""
+        context = None
+        if FIM_MODE and RAG_TRAIN_MODE:
+            query = _fim_query(tokens, pre_end, mid_end)
+            record = search_rag(query) if query else None
+            context = _make_context(tokens, record, BLOCK_SIZE)
+        return (cat, tokens, pre_end, mid_end, context, lang)
 
     @torch.no_grad()
     def run_eval(step: int):
@@ -1185,41 +1333,57 @@ if __name__ == "__main__":
         wandb.log({"eval_loss": val, "eval_ppl": math.exp(min(val, 20))}, step=step)
 
     def build_fim_eval_set(n: int = FIM_EVAL_SAMPLES):
-        """Deterministic FIM eval set: fixed split + optional RAG context, built once per run."""
+        """Fixed FIM eval set: synthetic + persisted server samples, same on every resume."""
         fim_eval_set.clear()
         # Reserve context room ONLY when RAG is actually enabled; otherwise the
         # FIM eval samples use the FULL window like training does.
         fim_cap = (BLOCK_SIZE - CONTEXT_MAX_TOKENS - 6 - LANG_OVERHEAD
                    if (FIM_MODE and RAG_TRAIN_MODE)
                    else BLOCK_SIZE - 3 - LANG_OVERHEAD)
-        attempts = 0
-        while len(fim_eval_set) < n and attempts < 6:
-            attempts += 1
-            try:
-                fresh = get_next_samples(n - len(fim_eval_set) + 8)
-            except RuntimeError:
-                break
-            if not fresh:
-                break
-            for cat, tokens in fresh:
-                if len(fim_eval_set) >= n:
+        # 1) synthetic cases first — always present, fully deterministic
+        for lang, code in SYNTH_EVAL_CASES:
+            cid = CAT_ID_BY_NAME.get(normalize_lang(lang))
+            if cid is None:
+                print(f"  WARNING: synth eval lang '{lang}' not in category index — skipping")
+                continue
+            out = _fim_eval_split(sp.encode(code, out_type=int), fim_cap)
+            if out is None:
+                continue
+            tokens, pre_end, mid_end = out
+            fim_eval_set.append(_fim_eval_item(cid, tokens, pre_end, mid_end, lang))
+        # 2) server-derived samples — fetched once, cached to disk
+        cached = load_eval_items(EVAL_FIM_PATH)
+        if cached is None:
+            items = []
+            need = max(0, n - len(fim_eval_set))
+            attempts = 0
+            while len(items) < need and attempts < 6:
+                attempts += 1
+                try:
+                    fresh = get_next_samples(need - len(items) + 8)
+                except RuntimeError:
                     break
-                if cat not in CODE_CATEGORY_IDS or len(tokens) < 200:
-                    continue
-                tokens = tokens[:fim_cap]
-                L = len(tokens)
-                pre_end = _snap_newline(tokens, max(32, L // 2))
-                mid_end = _snap_newline(tokens, pre_end + max(16, min(L // 4, L - pre_end - 1)))
-                if mid_end <= pre_end or mid_end >= L:
-                    continue
-                if FIM_MODE and RAG_TRAIN_MODE:
-                    query = _fim_query(tokens, pre_end, mid_end)
-                    record = search_rag(query) if query else None
-                    context = _make_context(tokens, record, BLOCK_SIZE)
-                else:
-                    context = None
-                fim_eval_set.append((cat, tokens, pre_end, mid_end, context))
-        print(f"Cached FIM eval set: {len(fim_eval_set)} samples (fixed for this run)")
+                if not fresh:
+                    break
+                for cat, tokens in fresh:
+                    if len(items) >= need:
+                        break
+                    if cat not in CODE_CATEGORY_IDS or len(tokens) < 200:
+                        continue
+                    out = _fim_eval_split(tokens, fim_cap)
+                    if out is None:
+                        continue
+                    tok, pre_end, mid_end = out
+                    items.append((cat, tok, pre_end, mid_end, CAT_NAME_BY_ID.get(cat)))
+            save_eval_items(EVAL_FIM_PATH, [
+                {"cat": c, "tokens": list(t), "pre_end": p, "mid_end": m, "lang": lg}
+                for c, t, p, m, lg in items])
+            cached = [{"cat": c, "tokens": list(t), "pre_end": p, "mid_end": m, "lang": lg}
+                      for c, t, p, m, lg in items]
+        for d in cached:
+            fim_eval_set.append(_fim_eval_item(
+                d["cat"], list(d["tokens"]), int(d["pre_end"]), int(d["mid_end"]), d.get("lang")))
+        print(f"FIM eval set: {len(fim_eval_set)} samples — persistent: {EVAL_FIM_PATH}")
 
     @torch.no_grad()
     def run_fim_eval(step: int):
@@ -1233,10 +1397,10 @@ if __name__ == "__main__":
         for s0 in range(0, len(fim_eval_set), step_chunk):
             batch = fim_eval_set[s0:s0 + step_chunk]
             prepared = []
-            for cat, tokens, pre_end, mid_end, context in batch:
+            for cat, tokens, pre_end, mid_end, context, lang in batch:
                 seq = torch.tensor(tokens, dtype=torch.long)
-                vseq, vmt = _fim_variant(seq, pre_end, mid_end, context,
-                                         CAT_NAME_BY_ID.get(cat))
+                sample_lang = lang or CAT_NAME_BY_ID.get(cat)
+                vseq, vmt = _fim_variant(seq, pre_end, mid_end, context, sample_lang)
                 prepared.append((vseq, vmt))
             n_max = max(len(s) - 1 for s, _ in prepared)
             x = torch.zeros((len(prepared), n_max), dtype=torch.long, device=DEVICE)
@@ -1274,9 +1438,10 @@ if __name__ == "__main__":
         accs = 0.0
         exacts = 0
         count = 0
-        for cat, tokens, pre_end, mid_end, context in fim_eval_set[:FIM_EVAL_GEN_SAMPLES]:
+        for cat, tokens, pre_end, mid_end, context, lang in fim_eval_set[:FIM_EVAL_GEN_SAMPLES]:
             seq = torch.tensor(tokens, dtype=torch.long)
-            vseq, _ = _fim_variant(seq, pre_end, mid_end, context, CAT_NAME_BY_ID.get(cat))
+            sample_lang = lang or CAT_NAME_BY_ID.get(cat)
+            vseq, _ = _fim_variant(seq, pre_end, mid_end, context, sample_lang)
             mid_idx = int((vseq == FIM_MID).nonzero()[0].item())
             prompt = vseq[:mid_idx + 1].unsqueeze(0).to(DEVICE)
             ref = vseq[mid_idx + 1:-1].tolist()  # middle (without <fim_end>)
@@ -1306,6 +1471,16 @@ if __name__ == "__main__":
     build_eval_set()
     build_fim_eval_set()
     torch.cuda.empty_cache()
+
+    if os.environ.get("LOCLLM_EVAL_ONLY") == "1":
+        # Measurement mode: run the fixed eval sets on the loaded checkpoint
+        # BEFORE any training step (no optimizer perturbation).
+        run_eval(start_step)
+        run_fim_eval(start_step)
+        run_fim_gen_eval(start_step)
+        torch.cuda.empty_cache()
+        print("EVAL-ONLY: exiting before training (LOCLLM_EVAL_ONLY=1)")
+        raise SystemExit(0)
 
     first_eval_done = False
 
@@ -1393,11 +1568,13 @@ if __name__ == "__main__":
             print(f"step {step:6d} | loss {cur_loss:.4f} | ppl {cur_ppl:.1f} | "
                   f"acc {cur_acc:.3f} | lr {lr:.2e} | "
                   f"grad_norm {cur_grad:.2f} | {tok_per_sec:.0f} tok/s | "
+                  f"sup {tokens_seen} tok/step | "
                   f"ema_loss {ema_loss:.4f} | ema_ppl {ema_ppl:.1f} | "
                   f"ema_acc {ema_acc:.3f} | ema_grad {ema_grad:.2f}")
             wandb.log({"loss": cur_loss, "ppl": cur_ppl, "acc": cur_acc, "lr": lr,
                         "grad_norm": cur_grad,
                         "tok_per_sec": tok_per_sec, "tokens_seen": tokens_seen,
+                        "sup_tokens_per_step": tokens_seen,
                         "ema_loss": ema_loss, "ema_ppl": ema_ppl, "ema_acc": ema_acc,
                         "ema_grad": ema_grad, **cat_metrics}, step=step)
 
@@ -1439,3 +1616,6 @@ if __name__ == "__main__":
             run_fim_gen_eval(step)
             first_eval_done = True
             torch.cuda.empty_cache()
+            if os.environ.get("LOCLLM_STOP_AFTER_FIRST_EVAL") == "1":
+                print("TEST MODE: stopping after first eval (LOCLLM_STOP_AFTER_FIRST_EVAL=1)")
+                break

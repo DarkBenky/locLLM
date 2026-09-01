@@ -62,9 +62,9 @@ class CausalSelfAttention(nn.Module):
         return self.out_proj(out)
 
 class SwiGLU(nn.Module):
-    def __init__(self, dim: int, hidden_mult: float = 8 / 3):
+    def __init__(self, dim: int, hidden_mult: float = 8 / 3, ffn_hidden: int | None = None):
         super().__init__()
-        hidden = int(dim * hidden_mult)
+        hidden = ffn_hidden if ffn_hidden is not None else int(dim * hidden_mult)
         self.w_gate = nn.Linear(dim, hidden, bias=False)
         self.w_up = nn.Linear(dim, hidden, bias=False)
         self.w_down = nn.Linear(hidden, dim, bias=False)
@@ -73,12 +73,12 @@ class SwiGLU(nn.Module):
         return self.w_down(F.silu(self.w_gate(x)) * self.w_up(x))
 
 class Block(nn.Module):
-    def __init__(self, dim: int, n_heads: int):
+    def __init__(self, dim: int, n_heads: int, ffn_hidden: int | None = None):
         super().__init__()
         self.attn_norm = RMSNorm(dim)
         self.attn = CausalSelfAttention(dim, n_heads)
         self.ffn_norm = RMSNorm(dim)
-        self.ffn = SwiGLU(dim)
+        self.ffn = SwiGLU(dim, ffn_hidden=ffn_hidden)
  
     def forward(self, x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor) -> torch.Tensor:
         x = x + self.attn(self.attn_norm(x), cos, sin)
@@ -87,14 +87,15 @@ class Block(nn.Module):
 
 class Transformer(nn.Module):
     def __init__(self, vocab_size: int, dim: int = 512, n_layers: int = 6,
-                 n_heads: int = 8, max_seq_len: int = 1024, rope_base: float = 10000.0):
+                 n_heads: int = 8, max_seq_len: int = 1024, rope_base: float = 10000.0,
+                 ffn_hidden: int | None = None):
         super().__init__()
         self.max_seq_len = max_seq_len
         self.head_dim = dim // n_heads
         self.rope_base = rope_base
  
         self.tok_emb = nn.Embedding(vocab_size, dim)
-        self.blocks = nn.ModuleList([Block(dim, n_heads) for _ in range(n_layers)])
+        self.blocks = nn.ModuleList([Block(dim, n_heads, ffn_hidden=ffn_hidden) for _ in range(n_layers)])
         self.final_norm = RMSNorm(dim)
         self.lm_head = nn.Linear(dim, vocab_size, bias=False)
  

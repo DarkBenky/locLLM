@@ -100,6 +100,9 @@ class InferenceEngine:
         state = torch.load(ckpt_path, map_location="cpu", mmap=True)["model"]
         self.vocab_size = state["tok_emb.weight"].shape[0]
         self.n_layers = 1 + max(int(k.split(".")[1]) for k in state if k.startswith("blocks."))
+        # FFN width is derived from the checkpoint so both old (2731) and
+        # widened (3584) checkpoints load without config changes.
+        self.ffn_hidden = state["blocks.0.ffn.w_gate.weight"].shape[0]
         # Old checkpoints predate the reserved lang/context tokens: pad the
         # embeddings (mean-init, same as main_big.resize_vocab_embeddings) so
         # <lang>/<context_start> IDs are in range.
@@ -115,7 +118,7 @@ class InferenceEngine:
             self.vocab_size = reserved
         self.model = Transformer(
             vocab_size=self.vocab_size, dim=DIM, n_layers=self.n_layers,
-            n_heads=N_HEADS, max_seq_len=BLOCK_SIZE,
+            n_heads=N_HEADS, max_seq_len=BLOCK_SIZE, ffn_hidden=self.ffn_hidden,
         )
         self.model.load_state_dict(state)
         self.model.to(device=device, dtype=dtype)
