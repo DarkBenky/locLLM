@@ -43,12 +43,23 @@ TOKENIZER_MODEL_PATH = "../tok/tokenize/tokenizer_models/tokenizer.model"
 BLOCK_SIZE = 8192
 BATCH_SIZE = 2
 GRAD_ACCUM = 6  # effective batch = BATCH_SIZE * BLOCK_SIZE * GRAD_ACCUM (2*8192*6 ≈ 98k tokens/step)
-LOSS_SKIP_THRESHOLD = 5.0  # per-micro-step loss above this = corrupted batch -> skip it
+# Fixed token normalizer for the backward pass (FIX.md D1): every micro-step
+# gradient is scaled by 1/TOKEN_NORM instead of 1/GRAD_ACCUM, so token-rich
+# micro-batches contribute proportionally to their supervised token count.
+TOKEN_NORM = float(os.environ.get("LOCLLM_TOKEN_NORM", "12000"))
+# FIX.md 10: dynamic accumulation — keep adding micro-steps until the supervised
+# token target is met; MAX_MICRO caps the worst case (tiny/skipped micros).
+TOKEN_TARGET = int(os.environ.get("LOCLLM_TOKEN_TARGET", str(int(TOKEN_NORM))))
+MAX_MICRO = int(os.environ.get("LOCLLM_MAX_MICRO", str(GRAD_ACCUM)))
+# z-loss coefficient (PaLM/Chinchilla) for bf16 logit stability (FIX.md 17).
+Z_LOSS_COEF = float(os.environ.get("LOCLLM_Z_LOSS", "1e-4"))
+LOSS_SKIP_THRESHOLD = float(os.environ.get("LOCLLM_SKIP_TOK", "5.0"))  # PER-TOKEN loss above this = corrupted micro-step -> skip it
 MIN_SAMPLE_TOKENS = 64  # drop degenerate/short samples (loss over a few tokens is pure noise)
-DIM = 1024
-N_LAYERS = 128
+DIM = int(os.environ.get("LOCLLM_DIM", "1024"))
+N_LAYERS = int(os.environ.get("LOCLLM_N_LAYERS", "128"))
 OLD_N_LAYERS = 26
-N_HEADS = 16
+N_HEADS = int(os.environ.get("LOCLLM_N_HEADS", "16"))
+PRUNED = False  # set when resuming a depth-pruned checkpoint (FIX.md 36)
 
 # Non-destructive FFN widening: target hidden dim = DIM * ratio (3584 at 3.5x).
 # Override with LOCLLM_FFN_RATIO (e.g. 3.0 -> 3072, ~1.73B, tighter on VRAM).
@@ -71,7 +82,7 @@ MAX_LR = 1e-4
 MIN_LR = 1e-5
 LR_DECAY_STEPS = MAX_STEPS  # decay spans the full MAX_STEPS horizon (was 250k -> LR floor for the last half)
 WEIGHT_DECAY = 0.1
-GRAD_CLIP = 1.0
+GRAD_CLIP = float(os.environ.get("LOCLLM_GRAD_CLIP", "3.0"))  # pre-clip grad_norm p90 ~4.5 in logs
 CHATML_MASK_PROB = 0.8
 FIM_RATIO = 0.95
 FIM_VARIANTS = 1  # FIM samples generated per code sample
@@ -79,11 +90,11 @@ FIM_MAX_SAMPLE_TOKENS = 0  # 0 = FULL window (up to BLOCK_SIZE=8192) per sample:
                            # maximum context for every sample / matches 8K.
                            # Set e.g. 1536/4096 to cap windows and go faster.
 NO_CONTEXT_PROB = 0.5  # RAG-only knob: 50/50 with/without context when LOCLLM_RAG_TRAIN=1, unused in plain FIM mode
-# SAFIM-style short-span emphasis: benchmark completions are mostly one-liners
-# (e.g. api calls, control-flow expressions), not long chunks. ~75% of FIM
-# middles are line-level and only ~5% up to the full window budget.
-SHORT_MID_CUM = 0.75    # cumulative prob for line-level spans (<= ~128 tok)
-MEDIUM_MID_CUM = 0.95   # cumulative prob for short/medium spans (16..160 tok)
+# FIM middle-span mixture (FIX.md Phase 3): ~80% spans of 32-512 tokens,
+# ~20% longer spans up to LONG_MID_MAX. The old 75% line-level bias starved
+# per-step supervision (sup tok/step swung 200-30k).
+SHORT_MID_CUM = 0.8     # cumulative prob for the 32..512-token span class
+LONG_MID_MAX = 2048     # cap for the long-span class
 ROPE_BASE = 10000.0  # test e.g. 100000 for longer extrapolation at 8192
 LOSS_CHUNK = 1024  # sequence-chunk size for head+loss (bounds logits memory;
                     # 1024 keeps peak logits ~0.4GB at B=8; 2048 is faster but +~0.4GB)
@@ -94,7 +105,7 @@ EVAL_EVERY = 125
 EVAL_FIRST_AFTER = 10  # run one early eval after N steps (fail-fast sanity check)
 EVAL_SAMPLES = 64
 FIM_EVAL_SAMPLES = 32
-FIM_EVAL_GEN_SAMPLES = 4
+FIM_EVAL_GEN_SAMPLES = 32
 FIM_EVAL_GEN_TOKENS = 32
 CKPT_DIR = "./checkpoints"
 
@@ -299,11 +310,67 @@ def _is_8bit_optimizer(opt) -> bool:
 def _opt_state_is_8bit(opt_sd) -> bool:
     for v in opt_sd.get("state", {}).values():
         if isinstance(v, dict):
-            return "state1" in v or "qmap1" in v
+            return ("state1" in v or "qmap1" in v
+                    or "__bnb_optimizer_quant_state__" in v)
     return False
 
 
-def _load_optimizer_state(optimizer, ckpt, model, old_vocab=None) -> bool:
+def _splice_optimizer_for_arch(old_sd, optimizer, model, tied_emb):
+    """Rebuild a saved optimizer state dict for the current architecture
+    (FIX.md 23/24). Old checkpoints: tied lm_head (not a separate param) and no
+    LayerScale. New: lm_head appended to the decay group, ls_attn/ls_ffn in the
+    no-decay group (2 new params per block).
+
+    bnb's load_state_dict maps saved state keys to the CURRENT params by
+    POSITION (zip over the group param lists) and validates group sizes, so we
+    rewrite both the group "params" lists (new sizes) and the state keys
+    (new global indices). New LayerScale params get no state entry — bnb
+    initializes them lazily on the first step. lm_head clones tok_emb's state:
+    the weights are identical at step 0, so the copied moments are exactly right.
+    """
+    import copy as _copy
+    old_state = old_sd.get("state", {})
+    decay = optimizer.param_groups[0]["params"]
+    no_decay = optimizer.param_groups[1]["params"] if len(optimizer.param_groups) > 1 else []
+    n_decay = len(decay)
+    n_no_decay = len(no_decay)
+    n_old_decay = n_decay - 1  # lm_head is the appended param
+
+    name_of = {p: n for n, p in model.named_parameters()}
+    old_decay_names = [name_of[p] for p in decay][:n_old_decay]
+    old_no_decay_names = [name_of[p] for p in no_decay
+                          if not (name_of[p].endswith("ls_attn") or name_of[p].endswith("ls_ffn"))]
+    if len(old_state) != n_old_decay + len(old_no_decay_names):
+        return old_sd  # unexpected old architecture — let the loader fail/fallback
+
+    new_state = {}
+    for i in range(n_old_decay):
+        if i in old_state:
+            new_state[i] = old_state[i]
+    if tied_emb and 0 in old_state:
+        new_state[n_decay - 1] = _copy.deepcopy(old_state[0])  # lm_head <- tok_emb
+    old_base = n_old_decay  # first no-decay param's old global index
+    for j, p in enumerate(no_decay):
+        nm = name_of[p]
+        if nm.endswith("ls_attn") or nm.endswith("ls_ffn"):
+            continue  # new LayerScale params — left uninitialized
+        old_rel = old_no_decay_names.index(nm)
+        if old_base + old_rel in old_state:
+            new_state[old_base + j] = old_state[old_base + old_rel]
+    sd = dict(old_sd)
+    sd["state"] = new_state
+    pg0 = dict(old_sd["param_groups"][0])
+    pg0["params"] = list(range(n_decay))
+    if len(old_sd["param_groups"]) > 1:
+        pg1 = dict(old_sd["param_groups"][1])
+        pg1["params"] = list(range(n_decay, n_decay + n_no_decay))
+        sd["param_groups"] = [pg0, pg1]
+    else:
+        sd["param_groups"] = [pg0]
+    return sd
+
+
+def _load_optimizer_state(optimizer, ckpt, model, old_vocab=None, tied_emb=False) -> bool:
     if "optimizer" not in ckpt:
         return False
     old_sd = ckpt["optimizer"]
@@ -313,6 +380,9 @@ def _load_optimizer_state(optimizer, ckpt, model, old_vocab=None) -> bool:
               "selected optimizer — starting optimizer fresh (model weights unchanged)")
         return False
     try:
+        n_new = sum(len(g["params"]) for g in optimizer.param_groups)
+        if len(old_sd.get("state", {})) != n_new:
+            old_sd = _splice_optimizer_for_arch(old_sd, optimizer, model, tied_emb)
         if old_vocab is not None and not want_8bit:
             optimizer.load_state_dict(_splice_optimizer(old_sd, model, optimizer, old_vocab))
         else:
@@ -500,7 +570,7 @@ CAT_NAME_BY_ID: dict[int, str] = {}
 MAX_CACHE_SIZE = 1024
 
 FETCH_BULK = 512
-POOL_MIN = 128
+POOL_MIN = 512  # was 128 — a bigger pool is needed for real length/category mixing (FIX.md 14)
 BATCH_QUEUE_MAX = 4
 
 _sample_pool: list[tuple[int, list[int]]] = []
@@ -516,6 +586,7 @@ _stats = {
     "rag_q": 0,             # RAG queries issued
     "rag_miss": 0,          # ... that produced no context
     "ctx_n": 0, "ctx_len": 0, "ctx_clip": 0,  # context built / tokens used / clipped at cap
+    "skip_micro": 0,        # micro-steps skipped (corrupted batches)
 }
 
 
@@ -557,17 +628,14 @@ def _fetch_samples_with_retry(count: int) -> list[tuple[int, list[int]]]:
 
 
 def _sample_mid_len(mid_max: int) -> int:
-    """Middle-span mixture biased toward short, line-level completions:
-    ~75% 1-few lines (<=128 tok, incl. tiny 2-3 token expressions),
-    ~20% short-medium (16-160 tok), ~5% up to the window budget."""
+    """Middle-span mixture: ~80% spans of 32-512 tokens, ~20% longer (up to 2048).
+    Replaces the old line-level bias that starved per-step supervision."""
     if mid_max <= 1:
         return 1
     r = random.random()
     if r < SHORT_MID_CUM:
-        return min(mid_max, random.choice((2, 3, 4, 8, 12, 16, 24, 32, 48, 64, 96, 128)))
-    if r < MEDIUM_MID_CUM:
-        return random.randint(min(16, mid_max), min(160, mid_max))
-    return random.randint(min(64, mid_max), mid_max)
+        return random.randint(min(32, mid_max), min(512, mid_max))
+    return random.randint(min(256, mid_max), min(LONG_MID_MAX, mid_max))
 
 
 def _snap_newline(tokens: list, pos: int, window: int = 96) -> int:
@@ -812,11 +880,33 @@ def _build_batch_from_pool(batch_size: int, block_size: int):
         if len(tokens) >= MIN_SAMPLE_TOKENS:
             trimmed.append((cat, tokens))
 
-    trimmed.sort(key=lambda c: len(c[1]))
-    start = random.randrange(0, max(1, len(trimmed) - batch_size + 1))
-    chosen = trimmed[start:start + batch_size]
-    del trimmed[start:start + batch_size]
-    _sample_pool = tails + trimmed
+    random.shuffle(trimmed)
+    # FIX.md 13/14: round-robin selection across length buckets and categories.
+    # The old sort(key=len) + contiguous window made every batch length-uniform
+    # (the regime swings). Draw one sample per length bucket per round, and
+    # prefer categories not yet seen in this batch (stratification).
+    buckets: dict[int, list] = {}
+    for item in trimmed:
+        buckets.setdefault(len(item[1]) // 1024, []).append(item)
+    for lst in buckets.values():
+        random.shuffle(lst)
+    chosen = []
+    while len(chosen) < batch_size and any(buckets.values()):
+        seen_cats = {c for c, _ in chosen}
+        progressed = False
+        for key in sorted(buckets.keys()):
+            lst = buckets[key]
+            if not lst:
+                continue
+            idx = next((i for i, (c, _) in enumerate(lst) if c not in seen_cats), 0)
+            chosen.append(lst.pop(idx))
+            seen_cats.add(chosen[-1][0])
+            progressed = True
+            if len(chosen) >= batch_size:
+                break
+        if not progressed:
+            break
+    _sample_pool = tails + [item for lst in buckets.values() for item in lst]
 
     if not chosen:
         return (torch.zeros(1, 1, dtype=torch.long),
@@ -1001,14 +1091,14 @@ if __name__ == "__main__":
         optimizer = bnb.optim.AdamW8bit(
             [{"params": decay, "weight_decay": WEIGHT_DECAY},
              {"params": no_decay, "weight_decay": 0.0}],
-            lr=MAX_LR, betas=(0.9, 0.95),
+            lr=MAX_LR, betas=(0.9, 0.98),
         )
         print("Using 8-bit AdamW optimizer (bitsandbytes)", flush=True)
     else:
         optimizer = torch.optim.AdamW(
             [{"params": decay, "weight_decay": WEIGHT_DECAY},
              {"params": no_decay, "weight_decay": 0.0}],
-            lr=MAX_LR, betas=(0.9, 0.95),
+            lr=MAX_LR, betas=(0.9, 0.98),
         )
 
     if DEVICE == "cuda":
@@ -1033,6 +1123,9 @@ if __name__ == "__main__":
             print(f"Loading big checkpoint: {latest}", flush=True)
             ckpt = _load_ckpt(latest)
             sd = ckpt["model"]
+            # tied-embedding checkpoints may lack the duplicate lm_head key
+            sd.setdefault("lm_head.weight", sd["tok_emb.weight"])
+            tied_emb = torch.equal(sd["tok_emb.weight"], sd["lm_head.weight"])
             ckpt_layers = 1 + max(int(k.split(".")[1]) for k in sd if k.startswith("blocks."))
             if ckpt_layers != N_LAYERS:
                 raise RuntimeError(f"big checkpoint {latest} has {ckpt_layers} layers, expected {N_LAYERS}")
@@ -1058,20 +1151,31 @@ if __name__ == "__main__":
                 FFN_WIDENED = True
                 migrated = True
             if not migrated:
-                model.load_state_dict(sd)
+                # strict=False: LayerScale params keep their init of 1.0
+                # (exactly function-preserving, FIX.md 24)
+                model.load_state_dict(sd, strict=False)
                 if "optimizer" in ckpt:
-                    _load_optimizer_state(optimizer, ckpt, model)
+                    _load_optimizer_state(optimizer, ckpt, model, tied_emb=tied_emb)
                 else:
                     print("  no optimizer state in checkpoint — starting optimizer fresh", flush=True)
             elif VOCAB_RESIZED and not FFN_WIDENED:
                 # vocab-only resize: splice the optimizer state for the new rows
-                _load_optimizer_state(optimizer, ckpt, model, old_vocab=ckpt_vocab)
+                _load_optimizer_state(optimizer, ckpt, model, old_vocab=ckpt_vocab, tied_emb=tied_emb)
             else:
                 # FFN widen (or both): optimizer state shapes no longer match ->
                 # start the optimizer fresh. Safe: zero-init keeps the output
                 # identical at step 0.
                 print("  optimizer restarted fresh (FFN shapes changed)", flush=True)
             start_step = ckpt["step"] + 1
+            if ckpt.get("pruned_from") or ckpt.get("widened_from"):
+                PRUNED = True
+                info = []
+                if ckpt.get("pruned_from"):
+                    info.append(f"pruned {ckpt['pruned_from']}->{N_LAYERS} layers")
+                if ckpt.get("widened_from"):
+                    info.append(f"widened dim {ckpt['widened_from']}->{DIM}")
+                print(f"Structural checkpoint detected ({', '.join(info)}) "
+                      f"— wake-up heal active for {WAKEUP_STEPS} steps", flush=True)
             if migrated:
                 big_path = f"{CKPT_DIR}/{CKPT_PREFIX}{start_step - 1}_widen{NEW_FFN_HIDDEN}.pt"
                 torch.save({"model": model.state_dict(), "step": start_step - 1}, big_path)
@@ -1098,9 +1202,11 @@ if __name__ == "__main__":
                 torch.save({"model": new_sd, "step": start_step - 1}, big_path)
                 print(f"Saved upscaled big checkpoint: {big_path}")
             else:
-                model.load_state_dict(sd)
+                sd.setdefault("lm_head.weight", sd["tok_emb.weight"])
+                tied_emb = torch.equal(sd["tok_emb.weight"], sd["lm_head.weight"])
+                model.load_state_dict(sd, strict=False)
                 if "optimizer" in ckpt:
-                    _load_optimizer_state(optimizer, ckpt, model)
+                    _load_optimizer_state(optimizer, ckpt, model, tied_emb=tied_emb)
                 start_step = ckpt["step"] + 1
                 print(f"Resuming from step {start_step}")
         else:
@@ -1112,21 +1218,60 @@ if __name__ == "__main__":
                 p.requires_grad = False
         print(f"Wake-up phase: old blocks frozen for {WAKEUP_STEPS} steps")
 
+    # saved optimizer state carries the old betas in its param groups — force
+    # the new ones after any resume (FIX.md 15). Moments decay within ~50 steps.
+    for _group in optimizer.param_groups:
+        _group["betas"] = (0.9, 0.98)
+
     # LR resume check: a NORMAL resume (same layers, same vocab, optimizer state
     # present) must NOT enter the wake-up burst. Print what is active so a silent
     # LR restart can never masquerade as "no improvement".
-    _wake_active = UPSCALED or VOCAB_RESIZED or FFN_WIDENED
+    _wake_active = UPSCALED or VOCAB_RESIZED or FFN_WIDENED or PRUNED
     _wake_n = VOCAB_WAKEUP_STEPS if VOCAB_RESIZED else WAKEUP_STEPS
     _lr_at_resume = get_lr(start_step, start_step)
     if _wake_active:
         print(f"LR CHECK: WAKE-UP ACTIVE (upscaled={UPSCALED}, vocab_resized={VOCAB_RESIZED}, "
-              f"ffn_widened={FFN_WIDENED}) | "
+              f"ffn_widened={FFN_WIDENED}, pruned={PRUNED}) | "
               f"LR phase for {_wake_n} steps from {start_step} (until ~{start_step + _wake_n}) | "
               f"lr now {_lr_at_resume:.2e} (capped at scheduled LR)")
     else:
         print(f"LR CHECK: no wake-up burst on this resume (upscaled={UPSCALED}, "
-              f"vocab_resized={VOCAB_RESIZED}, ffn_widened={FFN_WIDENED}) | absolute cosine schedule | "
+              f"vocab_resized={VOCAB_RESIZED}, ffn_widened={FFN_WIDENED}, pruned={PRUNED}) | absolute cosine schedule | "
               f"lr @ {start_step} = {_lr_at_resume:.2e}")
+
+    # FIX.md 18: weight-EMA (CPU, bf16), used ONLY for eval/export. Training
+    # weights are untouched; evals run on the EMA copy for smoother curves.
+    EMA_DECAY = float(os.environ.get("LOCLLM_EMA_DECAY", "0.999"))
+    EMA_EVERY = int(os.environ.get("LOCLLM_EMA_EVERY", "100"))
+    EMA_ENABLED = os.environ.get("LOCLLM_EMA", "1") != "0"
+    ema_state = None
+
+    def _ema_sync():
+        global ema_state
+        if not EMA_ENABLED:
+            return
+        if ema_state is None:
+            ema_state = {n: p.data.detach().to("cpu", torch.bfloat16)
+                         for n, p in model.named_parameters()}
+        else:
+            for n, p in model.named_parameters():
+                ema_state[n].mul_(EMA_DECAY).add_(
+                    p.data.detach().to("cpu", torch.bfloat16), alpha=1.0 - EMA_DECAY)
+
+    def _ema_swap_in():
+        """Swap EMA weights into the model; returns a stash to restore from."""
+        if not ema_state:
+            return None
+        stash = {n: p.data.detach().to("cpu") for n, p in model.named_parameters()}
+        for n, p in model.named_parameters():
+            p.data.copy_(ema_state[n].to(p.device, p.dtype))
+        return stash
+
+    def _ema_restore(stash):
+        if stash is None:
+            return
+        for n, p in model.named_parameters():
+            p.data.copy_(stash[n].to(p.device, p.dtype))
 
     wandb.login()
     wandb.init(project="locLMM-FIM" if FIM_MODE else "locLMM", config={
@@ -1168,56 +1313,68 @@ if __name__ == "__main__":
 
             def _head_ce(hchunk, ychunk):
                 logits = model.lm_head(hchunk)
-                return F.cross_entropy(
+                maskc = ychunk != -100
+                loss = F.cross_entropy(
                     logits.view(-1, logits.size(-1)),
                     ychunk.reshape(-1),
                     reduction="sum",
                 )
+                correct = int((logits.argmax(dim=-1)[maskc] == ychunk[maskc]).sum())
+                per_tok = F.cross_entropy(
+                    logits.view(-1, logits.size(-1)), ychunk.reshape(-1), reduction="none",
+                ).float().view_as(ychunk)
+                row_loss = torch.where(maskc, per_tok, torch.zeros_like(per_tok)).sum(dim=-1)
+                row_cnt = maskc.sum(dim=-1)
+                zsum = torch.logsumexp(logits.float(), dim=-1).pow(2).sum()
+                return loss, correct, row_loss, row_cnt, zsum
 
-            losses = []
-            counts = []
+            loss_sum = torch.zeros((), device=x.device, dtype=torch.float32)
+            z_sum = torch.zeros((), device=x.device, dtype=torch.float32)
+            n_tok = 0
+            correct = 0
+            row_loss_acc = None
+            row_cnt_acc = None
             for s in range(0, seq_len, LOSS_CHUNK):
                 e = min(s + LOSS_CHUNK, seq_len)
                 yc = y[:, s:e]
-                losses.append(torch.utils.checkpoint.checkpoint(
-                    _head_ce, hidden[:, s:e], yc, use_reentrant=False))
-                counts.append(int((yc != -100).sum()))
-            loss = sum(losses) / sum(counts)
+                # FIX.md H2: reentrant checkpointing for the head chunks.
+                # Non-reentrant checkpointing retains every tensor saved during
+                # each chunk's recompute (frame.recomputed) until the graph
+                # dies: the fp32 logits/logsumexp/per_tok copies of 8 chunks
+                # are ~13-17 GB at B=8, held through the whole transformer
+                # backward (measured: 3.2 GB at B=2, gone with reentrant).
+                # Reentrant has no retention mechanism and _head_ce is a small
+                # dropout-free function, so it is safe and costs the same.
+                l_, c_, rl_, rc_, z_ = torch.utils.checkpoint.checkpoint(
+                    _head_ce, hidden[:, s:e], yc, use_reentrant=True)
+                loss_sum = loss_sum + l_
+                z_sum = z_sum + z_
+                n_tok += int((yc != -100).sum())
+                correct += c_
+                row_loss_acc = rl_ if row_loss_acc is None else row_loss_acc + rl_
+                row_cnt_acc = rc_ if row_cnt_acc is None else row_cnt_acc + rc_
+            loss = (loss_sum + Z_LOSS_COEF * z_sum) / max(n_tok, 1)
         loss_val = loss.item()
         if not math.isfinite(loss_val) or loss_val > LOSS_SKIP_THRESHOLD:
             # corrupted/degenerate batch: don't backprop or accumulate it
-            print(f"  skipped micro-step: loss {loss_val:.2f} (threshold {LOSS_SKIP_THRESHOLD})")
+            _stat("skip_micro")
+            print(f"  skipped micro-step: loss {loss_val:.2f} (per-token threshold {LOSS_SKIP_THRESHOLD})")
             del hidden, loss, x, y
             return 0.0, 0.0, 0.0, 0, {}
-        scaler.scale(loss / GRAD_ACCUM).backward()
+        # FIX.md D1: fixed token normalizer — micro-batches contribute to the
+        # gradient in proportion to their supervised token count.
+        scaler.scale((loss_sum + Z_LOSS_COEF * z_sum) / TOKEN_NORM).backward()
         with torch.no_grad():
-            mask = y != -100
-            n_tok = mask.sum().item()
-            correct = 0
-            per_row = torch.zeros_like(y, dtype=torch.float32)
-            # Metrics from the first chunk only: saves a redundant full lm_head pass
-            s = 0
-            e = min(LOSS_CHUNK, seq_len)
-            logits_c = model.lm_head(hidden[:, s:e])
-            yc = y[:, s:e]
-            mc = mask[:, s:e]
-            n_chunk = mc.sum().item()  # tokens actually evaluated for acc (chunk only)
-            correct += (logits_c.argmax(dim=-1)[mc] == yc[mc]).sum().item()
-            pr = F.cross_entropy(
-                logits_c.view(-1, logits_c.size(-1)), yc.reshape(-1), reduction="none",
-            ).view_as(yc)
-            per_row[:, s:e] = pr
-            acc = correct / max(n_chunk, 1)
-            row_real = mask.sum(dim=-1).float()
-            row_counts = mc.sum(dim=-1).float().clamp(min=1)  # only the evaluated chunk
-            row_loss = per_row[:, s:e].sum(dim=-1) / row_counts
+            acc = correct / max(n_tok, 1)
+            row_cnt_safe = row_cnt_acc.clamp(min=1)
+            row_loss_mean = row_loss_acc / row_cnt_safe
             cat_stats = {}
             for j, cat in enumerate(cats):
                 key = f"fim/{cat}" if fim_flags[j] else f"lm/{cat}"
                 wl, nt = cat_stats.get(key, (0.0, 0))
-                rc = int(row_real[j].item())
-                cat_stats[key] = (wl + row_loss[j].item() * rc, nt + rc)
-        del hidden, loss, mask, per_row, x, y
+                rc = float(row_cnt_acc[j].item())
+                cat_stats[key] = (wl + row_loss_acc[j].item(), nt + rc)
+        del hidden, loss, x, y
         return loss_val, math.exp(min(loss_val, 20)), acc, n_tok, cat_stats
 
     eval_set = []
@@ -1290,6 +1447,7 @@ if __name__ == "__main__":
         if not eval_set:
             return
         model.eval()
+        stash = _ema_swap_in()  # FIX.md 18: eval on the EMA weights
         total_loss = 0.0
         total_tokens = 0
         step_chunk = min(4, max(1, len(eval_set) // 2))  # bound logits memory at 8192
@@ -1327,6 +1485,7 @@ if __name__ == "__main__":
             total_loss += loss.item()
             total_tokens += int((y != -100).sum().item())
             del hidden, loss, x, y
+        _ema_restore(stash)
         model.train()
         val = total_loss / max(total_tokens, 1)
         print(f"  eval @ step {step}: loss {val:.4f} | ppl {math.exp(min(val, 20)):.1f}")
@@ -1391,6 +1550,7 @@ if __name__ == "__main__":
         if not fim_eval_set:
             return
         model.eval()
+        stash = _ema_swap_in()  # FIX.md 18
         total_loss = 0.0
         total_tokens = 0
         step_chunk = min(4, len(fim_eval_set))  # bound logits memory at 8192
@@ -1424,6 +1584,7 @@ if __name__ == "__main__":
             total_loss += loss.item()
             total_tokens += int((y != -100).sum().item())
             del hidden, loss, x, y
+        _ema_restore(stash)
         model.train()
         val = total_loss / max(total_tokens, 1)
         print(f"  fim eval @ step {step}: loss {val:.4f} | ppl {math.exp(min(val, 20)):.1f}")
@@ -1431,14 +1592,78 @@ if __name__ == "__main__":
 
     @torch.no_grad()
     def run_fim_gen_eval(step: int):
-        """Greedy FIM generation vs reference middle: prefix-match accuracy + exact-match."""
+        """FIM middle-completion quality (FIX.md 21):
+        - teacher-forced middle top-1 (batched, exact model score on the span)
+        - greedy generation: prefix_acc, exact@k, first-line exact match,
+          token edit similarity (SAFIM-style ES)
+        prefix_acc is de-emphasized in favor of the sharper metrics."""
         if not fim_eval_set or DEVICE == "cpu":
             return
         model.eval()
+        stash = _ema_swap_in()
+        items = fim_eval_set[:FIM_EVAL_GEN_SAMPLES]
+
+        def _lev(a, b):
+            if not a or not b:
+                return max(len(a), len(b))
+            prev = list(range(len(b) + 1))
+            for i, x in enumerate(a, 1):
+                cur = [i]
+                for j, y in enumerate(b, 1):
+                    cur.append(min(prev[j] + 1, cur[-1] + 1, prev[j - 1] + (x != y)))
+                prev = cur
+            return prev[-1]
+
+        def _first_line(ids):
+            line = []
+            for t in ids:
+                if t in NEWLINE_IDS:
+                    break
+                line.append(t)
+            return line
+
+        # ---- teacher-forced middle top-1 (batched) ----
+        top1_correct = top1_total = 0
+        step_chunk = min(4, len(items))
+        for s0 in range(0, len(items), step_chunk):
+            batch = items[s0:s0 + step_chunk]
+            prepared = []
+            mid_idxs = []
+            for cat, tokens, pre_end, mid_end, context, lang in batch:
+                seq = torch.tensor(tokens, dtype=torch.long)
+                vseq, _ = _fim_variant(seq, pre_end, mid_end, context,
+                                       lang or CAT_NAME_BY_ID.get(cat))
+                prepared.append(vseq)
+                mid_idxs.append(int((vseq == FIM_MID).nonzero()[0].item()))
+            n_max = max(len(s) - 1 for s in prepared)
+            x = torch.zeros((len(prepared), n_max), dtype=torch.long, device=DEVICE)
+            for i, s in enumerate(prepared):
+                n = min(len(s) - 1, n_max)
+                x[i, :n] = s[:n]
+            with torch.autocast(device_type="cuda", dtype=AUTOCAST_DTYPE, enabled=(DEVICE == "cuda")):
+                hidden = model(x, return_hidden=True)
+                hidden = hidden.to(MODEL_DTYPE)
+                for c in range(0, hidden.shape[1], LOSS_CHUNK):
+                    logits_c = model.lm_head(hidden[:, c:c + LOSS_CHUNK])  # (B, chunk, V)
+                    preds = logits_c.argmax(dim=-1)
+                    for i in range(len(prepared)):
+                        mi = mid_idxs[i]
+                        for j in range(c, min(c + LOSS_CHUNK, n_max - 1)):
+                            if j < mi or x[i, j + 1].item() == FIM_END:
+                                continue
+                            top1_total += 1
+                            if preds[i, j - c] == x[i, j + 1]:
+                                top1_correct += 1
+            del hidden, logits_c, x
+        top1_tf = top1_correct / max(top1_total, 1)
+
+        # ---- greedy generation vs reference middle ----
         accs = 0.0
         exacts = 0
+        fl_exacts = 0
+        es_sum = 0.0
         count = 0
-        for cat, tokens, pre_end, mid_end, context, lang in fim_eval_set[:FIM_EVAL_GEN_SAMPLES]:
+        for cat, tokens, pre_end, mid_end, context, lang in items:
             seq = torch.tensor(tokens, dtype=torch.long)
             sample_lang = lang or CAT_NAME_BY_ID.get(cat)
             vseq, _ = _fim_variant(seq, pre_end, mid_end, context, sample_lang)
@@ -1460,13 +1685,22 @@ if __name__ == "__main__":
                 accs += pref / k
                 if gen_ids[:k] == ref[:k]:
                     exacts += 1
+                if _first_line(gen_ids) == _first_line(ref):
+                    fl_exacts += 1
+                es_sum += 1.0 - _lev(gen_ids[:k], ref[:k]) / max(k, 1)
                 count += 1
+        _ema_restore(stash)
         model.train()
         if count:
-            print(f"  fim gen eval @ step {step}: prefix_acc {accs / count:.3f} | "
-                  f"exact@{FIM_EVAL_GEN_TOKENS} {exacts / count:.2f}")
-            wandb.log({"eval_fim_gen_prefix_acc": accs / count,
-                       "eval_fim_gen_exact": exacts / count}, step=step)
+            es = es_sum / count
+            print(f"  fim gen eval @ step {step}: top1_tf {top1_tf:.3f} | prefix_acc {accs / count:.3f} | "
+                  f"exact@{FIM_EVAL_GEN_TOKENS} {exacts / count:.2f} | first-line {fl_exacts / count:.2f} | "
+                  f"edit-sim {es:.3f}")
+            wandb.log({"eval_fim_gen_top1_tf": top1_tf,
+                       "eval_fim_gen_prefix_acc": accs / count,
+                       "eval_fim_gen_exact": exacts / count,
+                       "eval_fim_gen_firstline": fl_exacts / count,
+                       "eval_fim_gen_edit_sim": es}, step=step)
 
     build_eval_set()
     build_fim_eval_set()
@@ -1483,6 +1717,7 @@ if __name__ == "__main__":
         raise SystemExit(0)
 
     first_eval_done = False
+    win_sup, win_loss = [], []
 
     for step in range(start_step, MAX_STEPS):
         if UPSCALED and step - start_step == WAKEUP_STEPS:
@@ -1496,18 +1731,25 @@ if __name__ == "__main__":
         optimizer.zero_grad(set_to_none=True)
         accum_loss_w = accum_acc = 0.0
         accum_tokens = 0
+        micro_n = 0
         cat_stats_accum = {}
 
-        for micro in range(GRAD_ACCUM):
+        # FIX.md 10: dynamic accumulation — stop once the supervised token
+        # target is met (token-rich micros end the step early), capped by
+        # MAX_MICRO so tiny/skipped micros can't stall the step.
+        for micro in range(MAX_MICRO):
             l, _, a, n, cat_stats = _micro_step()
             if n == 0:
                 continue
+            micro_n += 1
             accum_loss_w += l * n
             accum_acc += a * n
             accum_tokens += n
             for key, (wl, nt) in cat_stats.items():
                 aw, at = cat_stats_accum.get(key, (0.0, 0))
                 cat_stats_accum[key] = (aw + wl, at + nt)
+            if accum_tokens >= TOKEN_TARGET:
+                break
 
         if accum_tokens == 0:
             continue
@@ -1532,6 +1774,9 @@ if __name__ == "__main__":
         scaler.step(optimizer)
         scaler.update()
 
+        if EMA_ENABLED and (step - start_step) % EMA_EVERY == 0:
+            _ema_sync()  # FIX.md 18: CPU-side EMA, eval/export only
+
         if DEVICE == "cuda":
             torch.cuda.synchronize()
         dt = time.time() - t0
@@ -1547,6 +1792,8 @@ if __name__ == "__main__":
         ema_ppl = _ema_update(ema_ppl, cur_ppl)
         ema_acc = _ema_update(ema_acc, cur_acc)
         ema_grad = _ema_update(ema_grad, cur_grad)
+        win_sup.append(tokens_seen)
+        win_loss.append(cur_loss)
 
         if step % LOG_EVERY == 0:
             cat_metrics = {}
@@ -1555,6 +1802,24 @@ if __name__ == "__main__":
                     cat_metrics[f"loss/{key}"] = wl / nt
                 cat_metrics[f"tokens/{key}"] = nt
             stats = _drain_stats()
+            wandb.log({"train/micro_steps": micro_n,
+                       "train/accum_tokens": accum_tokens}, step=step)
+            if win_sup:
+                w_sup_mean = sum(win_sup) / len(win_sup)
+                w_sup_std = (sum((s - w_sup_mean) ** 2 for s in win_sup) / len(win_sup)) ** 0.5
+                w_loss_mean = sum(win_loss) / len(win_loss)
+                w_loss_std = (sum((l - w_loss_mean) ** 2 for l in win_loss) / len(win_loss)) ** 0.5
+                print(f"  window(n={len(win_sup)}): sup {w_sup_mean:.0f} +/- {w_sup_std:.0f} "
+                      f"[{min(win_sup)}..{max(win_sup)}] tok/step | loss {w_loss_mean:.3f} +/- {w_loss_std:.3f} | "
+                      f"skipped {stats['skip_micro']}")
+                wandb.log({
+                    "window/sup_mean": w_sup_mean, "window/sup_std": w_sup_std,
+                    "window/sup_min": min(win_sup), "window/sup_max": max(win_sup),
+                    "window/loss_mean": w_loss_mean, "window/loss_std": w_loss_std,
+                    "skip/micro_steps": stats["skip_micro"],
+                }, step=step)
+                win_sup.clear()
+                win_loss.clear()
             if stats["fim_eligible"] > 0:
                 wandb.log({
                     "fim/trunc_rate": stats["fim_trunc"] / stats["fim_eligible"],

@@ -57,8 +57,8 @@ def _make_pre(block, k_cache, v_cache):
 def _make_post_pre(block_a, block_b, k_cache_b, v_cache_b):
     def f(x, attn_out, cos_p, sin_p, pos):
         out = attn_out.reshape(1, 1, DIM)
-        x = x + block_a.attn.out_proj(out)
-        x = x + block_a.ffn(block_a.ffn_norm(x))
+        x = x + block_a.ls_attn * block_a.attn.out_proj(out)
+        x = x + block_a.ls_ffn * block_a.ffn(block_a.ffn_norm(x))
         h = block_b.attn_norm(x)
         qkv = block_b.attn.qkv_proj(h)
         q, k, v = qkv.chunk(3, dim=-1)
@@ -76,8 +76,8 @@ def _make_post_pre(block_a, block_b, k_cache_b, v_cache_b):
 def _make_final(block, lm_head, final_norm):
     def f(x, attn_out):
         out = attn_out.reshape(1, 1, DIM)
-        x = x + block.attn.out_proj(out)
-        x = x + block.ffn(block.ffn_norm(x))
+        x = x + block.ls_attn * block.attn.out_proj(out)
+        x = x + block.ls_ffn * block.ffn(block.ffn_norm(x))
         return lm_head(final_norm(x))
     return f
 
@@ -98,6 +98,15 @@ class InferenceEngine:
         lang_ids = chatml.lang_ids(base)
         self.lang_open, self.lang_close = lang_ids["open"], lang_ids["close"]
         state = torch.load(ckpt_path, map_location="cpu", mmap=True)["model"]
+        # tied-embedding checkpoints may lack the (duplicate) lm_head key
+        state.setdefault("lm_head.weight", state["tok_emb.weight"])
+        # derive width/heads from the checkpoint so widened (e.g. dim 1536) models load
+        global DIM, N_HEADS, HEAD_DIM
+        meta_heads = state.pop("__meta_n_heads__", None)
+        DIM = state["tok_emb.weight"].shape[1]
+        if meta_heads is not None:
+            N_HEADS = int(meta_heads)
+        HEAD_DIM = DIM // N_HEADS
         self.vocab_size = state["tok_emb.weight"].shape[0]
         self.n_layers = 1 + max(int(k.split(".")[1]) for k in state if k.startswith("blocks."))
         # FFN width is derived from the checkpoint so both old (2731) and
@@ -120,7 +129,9 @@ class InferenceEngine:
             vocab_size=self.vocab_size, dim=DIM, n_layers=self.n_layers,
             n_heads=N_HEADS, max_seq_len=BLOCK_SIZE, ffn_hidden=self.ffn_hidden,
         )
-        self.model.load_state_dict(state)
+        # strict=False: old checkpoints predate LayerScale/untying; new
+        # params keep their function-preserving init (ls=1, lm_head=copy of emb)
+        self.model.load_state_dict(state, strict=False)
         self.model.to(device=device, dtype=dtype)
         self.model.eval()
         self.k_cache = torch.zeros(self.n_layers, 1, N_HEADS, BLOCK_SIZE, HEAD_DIM, device=device, dtype=dtype)
@@ -151,8 +162,8 @@ class InferenceEngine:
             self.v_cache[i][:, :, :T] = v
             out = F.scaled_dot_product_attention(q, k, v, is_causal=True)
             out = out.transpose(1, 2).contiguous().view(1, T, DIM)
-            x = x + block.attn.out_proj(out)
-            x = x + block.ffn(block.ffn_norm(x))
+            x = x + block.ls_attn * block.attn.out_proj(out)
+            x = x + block.ls_ffn * block.ffn(block.ffn_norm(x))
         x = self.model.final_norm(x)
         # Only the last position's logits are needed for sampling
         return self.model.lm_head(x[:, -1:])

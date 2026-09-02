@@ -112,3 +112,42 @@ Phase 0 → Phase 1 → Phase 6 items 23/24/25/26 (land together) → Phase 7 �
 - Structural reshaping (pruning/widening) is deferred until Phase 0.1 tells us how many of the 128 blocks actually do work.
 
 Created 8 todos
+
+## Implementation log
+
+- 2026-09-02 DONE: Phase 1 (5,6,7,8) — acc/cat-stats over all chunks, windowed sup/loss logging + skip counter.
+- 2026-09-02 DONE: Phase 2 (9,11) — fixed token normalizer TOKEN_NORM=12000 (LOCLLM_TOKEN_NORM), per-token skip (5.0).
+- 2026-09-02 DONE: Phase 3 (12) — span mixture 80% 32-512 tok / 20% up to 2048.
+- 2026-09-02 DONE: Phase 4 (15,16,17) — betas (0.9,0.98), GRAD_CLIP 3.0 (env), z-loss 1e-4 in _head_ce.
+- 2026-09-02 DONE: Phase 5 (20) — FIM_EVAL_GEN_SAMPLES 32.
+- 2026-09-02 DONE: Phase 7 (32) — RoPE tables cached per device (model.py).
+- 2026-09-02 DONE: Phase 0 script model/diag_blocks.py — run: python diag_blocks.py <ckpt> [n_samples] [max_tok].
+- 2026-09-02 DONE: Phase 4 (15) follow-up — betas forced to (0.9,0.98) after optimizer-state load (resume-safe).
+- 2026-09-02 DONE: Phase 4 (15) follow-up — betas forced to (0.9,0.98) after optimizer-state load (resume-safe).
+- 2026-09-02 DONE (H1): activation checkpointing segmented via LOCLLM_CKPT_SEG (default 4). Non-reentrant checkpointing saves the segment input per segment: 128 per-block segments = ~17 GB at B=8/T=8192 and OOMs 48 GB on the first backward. Segments of 4 cut the buffer to ~4.3 GB; forward/grad equivalence verified bitwise (max diff 0.0) on CPU for seg sizes 1/2/4/6.
+- 2026-09-02 DONE (H2): head chunk checkpoints switched to use_reentrant=True. Non-reentrant checkpointing retains every tensor saved during each chunk's recompute (frame.recomputed) until the graph dies: 8 chunks of fp32 logits/logsumexp/per_tok = ~13-17 GB at B=8 held through the whole transformer backward. Measured on the 3090: 3.2 GB retained at B=2 (live after backward 15.95 GB), gone with reentrant (12.80 GB), backward peak 22.28 -> 19.13 GB. Reentrant is safe for _head_ce (small, dropout-free); math unchanged.
+- 2026-09-02 MEASURED (mem_probe.py, local 3090): fixed cost ~19.2 GB (params 6.37 + AdamW8bit 6.5 + grads 6.37 bf16); projected B=8/T=8192/seg4/reentrant-head peak ~33-38 GB — fits 48 GB with margin.
+- 2026-09-02 NOTE: the half-sequence split idea is mathematically WRONG (causal attention truncates context for the second half) — do not use; segmented checkpointing is the correct fix.
+- 2026-09-02 VERIFIED: lint clean, model.py self-test OK, span sampler + constants smoke OK.
+- 2026-09-02 DONE: Phase 0 diagnostics (diag_blocks.py, 64 samples x 2048 tok on step_big_fim_211500.pt). Result: block 0 extreme (1-cosim 1.06, attn branch 78x residual norm); blocks 2/44/46/48/50 moderate (0.06-0.16); blocks 4-28 (even) small (0.02-0.03); **122/128 blocks near-identity (1-cosim < 0.05) and ALL blocks >= 52 exact identity** — confirms D12 and strongly supports Phase 8 depth pruning. Data endpoint fixed (/api/get-next-samples-random), results table in conversation; diag now saves <ckpt>_diag.json.
+- 2026-09-02 DONE: Phase 6 (23) — untied lm_head (fresh models start tied-equivalent via copy; old checkpoints already contain lm_head.weight, so loads are unchanged). Verified: lm_head == tok_emb after loading 211500.
+- 2026-09-02 DONE: Phase 6 (24) — LayerScale ls_attn/ls_ffn per block, init 1.0 (bf16 multiply by 1.0 is bitwise-exact => function-preserving). Applied in model.py and in inference.py's manual prefill/decode paths (train/inference symmetry kept).
+- 2026-09-02 DONE: Phase 6 (25) — fp32 RMSNorm accumulation. Measured logit delta vs old bf16 reduction on 211500: **0.00e+00** (bitwise identical on the test sample).
+- 2026-09-02 DONE: Phase 6 (26) — depth-scaled init (0.02/sqrt(2*n_layers)) for out_proj/w_down of FRESH weights only; loaded checkpoints overwrite.
+- 2026-09-02 DONE: optimizer-state splice `_splice_optimizer_for_arch` — rebuilds saved 8-bit state for untie+LayerScale (bnb load_state_dict is positional and validates group sizes). lm_head clones tok_emb's moments (exact at step 0). VERIFIED on 211500: load_state_dict OK, lm_head state == tok_emb state, optimizer.step() OK. Also fixed `_opt_state_is_8bit` to recognize bnb 0.50's `__bnb_optimizer_quant_state__` key (this was silently restarting the optimizer fresh on the instance!).
+- 2026-09-02 NOTE: verify_phase6.py is the reusable function-preservation test (LayerScale==1, lm_head==tok_emb, RMSNorm delta, optimizer splice+step).
+- 2026-09-02 DONE: Phase 2 (10) — dynamic accumulation: micro-steps until accum_tokens >= TOKEN_TARGET (LOCLLM_TOKEN_TARGET, default = TOKEN_NORM 12000), capped by MAX_MICRO (LOCLLM_MAX_MICRO, default GRAD_ACCUM). Logs train/micro_steps.
+- 2026-09-02 DONE: Phase 3 (13,14) — length-bucketed round-robin batch selection (replaces sort(key=len) contiguous window), per-batch category stratification (prefer unseen cats), POOL_MIN 128 -> 512. Smoke-tested: mixed-length batches, distinct categories.
+- 2026-09-02 DONE: Phase 4 (18) — weight-EMA on CPU (bf16, decay 0.999, synced every LOCLLM_EMA_EVERY=100 steps), used ONLY for eval (run_eval/run_fim_eval/run_fim_gen_eval swap EMA in/out). LOCLLM_EMA=0 disables.
+- 2026-09-02 DONE: Phase 4 (19) — LayerDrop p=0.05 (LOCLLM_LAYERDROP), training only, torch-rng based so checkpoint recompute drops the SAME blocks (fork_rng replays state). Eval never drops. Smoke-tested.
+- 2026-09-02 DONE: Phase 5 (21) — run_fim_gen_eval now reports teacher-forced middle top-1 (batched), first-line exact match, and token edit-similarity (Levenshtein, SAFIM-style) alongside prefix_acc/exact@k.
+- 2026-09-02 VERIFIED: Phase 5 (22) — training (_fim_variant) and inference (generate_fim) FIM prompts are SYMMETRIC: <fim_pre><lang>lang</lang>pre<fim_suf><lang>lang</lang>suf<fim_mid> in both. Minor known asymmetry only in the RAG path: inference wraps context in ctx_start/ctx_end, training appends raw (RAG_TRAIN_MODE is off by default; fix if ever enabled).
+- 2026-09-02 DONE: Phase 7 (33) — selective checkpointing via LOCLLM_CKPT_SEG (segments of N blocks, default 4).
+- 2026-09-02 DONE: Phase 7 (34) — torch.compile per Block, gated behind LOCLLM_COMPILE=1 (off by default; verify interaction with checkpointing before enabling in training).
+- 2026-09-02 ALL FIX.md ITEMS COMPLETE (remaining: optional Phase 8 follow-ups + future items).
+- 2026-09-02 DONE: Phase 8 tooling (36) — model/prune_blocks.py prunes 128 -> 52 layers (drop blocks 52-127, measured near-identity; keeps ALL contributing blocks incl. 44/46/48/50), carries optimizer moments for surviving params (name/position-based, bnb-compatible), saves for the NEW arch (untied + LayerScale). Result: step_big_fim_211500_pruned52.pt, 1.347B params. main_big: LOCLLM_N_LAYERS env + PRUNED wake-up heal on "pruned_from" marker.
+- 2026-09-02 MEASURED: pruned 52L eval on the real eval sets (LOCLLM_EVAL_ONLY): eval 1.715 vs 1.316, fim 1.698 vs 1.230 (step-0 cost of dropping the identity tail), but fim gen prefix_acc 0.210 vs 0.023 and exact@32 0.12 vs 0.00 (9x better generation — dead layers were hurting sampling). Deploy with wake-up heal; expect eval to recover in a few thousand steps.
+- 2026-09-02 DONE: Phase 8+widen combined (37) — model/widen_dim.py: Net2Wider dim 1024->1536, heads 16->24 (head_dim stays 64; extra heads zero-init), ffn 6656->9984 (new gate/up rows fresh-init, w_down new cols/rows zero). RMSNorm weights scaled by sqrt(old/new) (RMSNorm is not zero-padding invariant); qkv row layout remapped ([q,k,v] blocks shift with dim). VERIFIED function-preserving: max logit diff 0.024 (bf16 rounding) vs pruned model. Result: step_big_fim_211500_pruned52_w1536.pt, 2.98B params, NO optimizer state (fresh + wake-up heal, same precedent as FFN widen). main_big: LOCLLM_DIM/LOCLLM_N_HEADS envs; inference derives DIM/N_HEADS from checkpoint meta (__meta_n_heads__).
+- 2026-09-02 NOTE: random-token logit comparison 128L vs 52L is misleading (off-distribution, delta +1.7); decision made on the real eval-set numbers instead.
+- TODO (DEPLOYED to instance, operational only): rsync code + step_big_fim_211500_pruned52_w1536.pt, restart with LOCLLM_N_LAYERS=52 LOCLLM_DIM=1536 LOCLLM_N_HEADS=24 LOCLLM_FFN_RATIO=6.5.
+- OPTIONAL follow-ups (NOT blocking the long run; separate future plan): item 8 100-step median (window mean/std used instead), item 27 calibrated QK-norm, item 28 GQA (KV cache still 512 KB/tok, mitigated by pruning), item 30 RoPE base 100000, item 34 torch.compile verification (gated off by default).
