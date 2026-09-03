@@ -40,7 +40,7 @@ CONTEXT_MAX_TOKENS = 1024
 
 TOKENIZER_MODEL_PATH = "../tok/tokenize/tokenizer_models/tokenizer.model"
 
-BLOCK_SIZE = 8192
+BLOCK_SIZE = int(os.environ.get("LOCLLM_BLOCK_SIZE", "8192"))
 BATCH_SIZE = 2
 GRAD_ACCUM = 6  # effective batch = BATCH_SIZE * BLOCK_SIZE * GRAD_ACCUM (2*8192*6 ≈ 98k tokens/step)
 # Fixed token normalizer for the backward pass (FIX.md D1): every micro-step
@@ -84,7 +84,13 @@ LR_DECAY_STEPS = MAX_STEPS  # decay spans the full MAX_STEPS horizon (was 250k -
 WEIGHT_DECAY = 0.1
 GRAD_CLIP = float(os.environ.get("LOCLLM_GRAD_CLIP", "3.0"))  # pre-clip grad_norm p90 ~4.5 in logs
 CHATML_MASK_PROB = 0.8
-FIM_RATIO = 0.95
+# FIM/NTP mixture (grounding fix): 60% FIM infill, 40% classical next-token
+# prediction. Plain LM teaches exact left-to-right continuation (variable usage,
+# control flow) that FIM-only training with masked prefix/suffix never sees.
+FIM_RATIO = float(os.environ.get("LOCLLM_FIM_RATIO", "0.6"))
+# Classical-NTP samples get a <lang>...</lang> header so language conditioning
+# is learned in both modes (matches the FIM prompt format). 0 disables.
+LM_HEADER = os.environ.get("LOCLLM_LM_HEADER", "1") != "0"
 FIM_VARIANTS = 1  # FIM samples generated per code sample
 FIM_MAX_SAMPLE_TOKENS = 0  # 0 = FULL window (up to BLOCK_SIZE=8192) per sample:
                            # maximum context for every sample / matches 8K.
@@ -107,7 +113,7 @@ EVAL_SAMPLES = 64
 FIM_EVAL_SAMPLES = 32
 FIM_EVAL_GEN_SAMPLES = 32
 FIM_EVAL_GEN_TOKENS = 32
-CKPT_DIR = "./checkpoints"
+CKPT_DIR = os.environ.get("LOCLLM_CKPT_DIR", "./checkpoints")
 
 # --- deterministic eval instrumentation --------------------------------------
 # Eval-set paths; the synthetic cases + persist helpers live in
@@ -581,6 +587,7 @@ _prefetch_thread: "threading.Thread | None" = None
 _stats_lock = threading.Lock()
 _stats = {
     "fim_eligible": 0,      # FIM-eligible code samples planned
+    "lm_eligible": 0,       # classical-NTP code samples planned (grounding mix)
     "fim_trunc": 0,         # ... truncated to fim_cap
     "hist_1k": 0, "hist_2k": 0, "hist_4k": 0, "hist_8k": 0,  # pre-truncation length buckets
     "rag_q": 0,             # RAG queries issued
@@ -762,6 +769,8 @@ def _plan_fim(tokens: list, cat_id: int, block_size: int):
     global _sample_pool
     is_code = cat_id in CODE_CATEGORY_IDS
     do_fim = is_code and random.random() < FIM_RATIO and len(tokens) >= MIN_SAMPLE_TOKENS
+    if is_code and not do_fim and len(tokens) >= MIN_SAMPLE_TOKENS:
+        _stat("lm_eligible")  # classical-NTP grounding mix
     use_ctx = False
     if do_fim:
         # RAG context is NOT part of FIM training by default. Enable it only
@@ -821,6 +830,15 @@ def _process_sample(tokens: list, cat_id: int, block_size: int, splits=None, con
         else:
             toks = tokens
             mt = None
+            # FIX.md follow-up: classical NTP grounding — prepend <lang>name
+            # </lang> so LM samples learn language conditioning too. Only for
+            # code categories; chatml-marked samples keep their masked form.
+            if LM_HEADER and cat_id is not None and cat_id in CODE_CATEGORY_IDS:
+                lb = lang_block_ids(CAT_NAME_BY_ID.get(cat_id))
+                if lb:
+                    toks = lb + toks
+                    if len(toks) > block_size:
+                        toks = toks[:block_size]
         return [(torch.tensor(toks, dtype=torch.long), mt, False)]
 
     seq = torch.tensor(tokens, dtype=torch.long)
@@ -1802,8 +1820,14 @@ if __name__ == "__main__":
                     cat_metrics[f"loss/{key}"] = wl / nt
                 cat_metrics[f"tokens/{key}"] = nt
             stats = _drain_stats()
+            n_fim = stats.get("fim_eligible", 0)
+            n_lm = stats.get("lm_eligible", 0)
+            n_mix = n_fim + n_lm
             wandb.log({"train/micro_steps": micro_n,
-                       "train/accum_tokens": accum_tokens}, step=step)
+                       "train/accum_tokens": accum_tokens,
+                       "train/ntp_samples": n_lm,
+                       "train/fim_samples": n_fim,
+                       "train/ntp_ratio": (n_lm / n_mix) if n_mix else 0.0}, step=step)
             if win_sup:
                 w_sup_mean = sum(win_sup) / len(win_sup)
                 w_sup_std = (sum((s - w_sup_mean) ** 2 for s in win_sup) / len(win_sup)) ** 0.5
