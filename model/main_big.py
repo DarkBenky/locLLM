@@ -54,7 +54,7 @@ MAX_MICRO = int(os.environ.get("LOCLLM_MAX_MICRO", str(GRAD_ACCUM)))
 # z-loss coefficient (PaLM/Chinchilla) for bf16 logit stability (FIX.md 17).
 Z_LOSS_COEF = float(os.environ.get("LOCLLM_Z_LOSS", "1e-4"))
 LOSS_SKIP_THRESHOLD = float(os.environ.get("LOCLLM_SKIP_TOK", "5.0"))  # PER-TOKEN loss above this = corrupted micro-step -> skip it
-MIN_SAMPLE_TOKENS = 64  # drop degenerate/short samples (loss over a few tokens is pure noise)
+MIN_SAMPLE_TOKENS = int(os.environ.get("LOCLLM_MIN_SAMPLE_TOKENS", "256"))  # drop short samples (skip-micro diag 2026-09-04: 64 -> 256; revert via env)
 DIM = int(os.environ.get("LOCLLM_DIM", "1024"))
 N_LAYERS = int(os.environ.get("LOCLLM_N_LAYERS", "128"))
 OLD_N_LAYERS = 26
@@ -797,12 +797,12 @@ def _plan_fim(tokens: list, cat_id: int, block_size: int):
             fim_cap = block_size - 3 - LANG_OVERHEAD
         if len(tokens) > fim_cap:
             _stat("fim_trunc")
-            tail = tokens[fim_cap:]
-            if len(tail) >= 16:
-                if len(_sample_pool) < MAX_CACHE_SIZE:
-                    _sample_pool.append((cat_id, tail))
-                else:
-                    print(f"WARNING: pool full ({MAX_CACHE_SIZE}), discarding tail of sample")
+            # Skip-micro diagnosis (2026-09-04): do NOT re-add the truncated tail
+            # to _sample_pool. Tail re-addition turns the pool into a slow-draining
+            # reservoir where degenerate long samples (star_coder redactions,
+            # archive/SEO filler, foreign prose) accumulate and re-circulate — the
+            # source of the ~27% skip rate. Same model + fresh API data -> 0/200
+            # skips (diag_skip_micro.py). Truncate and discard the tail.
             tokens = tokens[:fim_cap]
         L = len(tokens)
         splits = _fim_splits(tokens, FIM_VARIANTS)
@@ -887,13 +887,9 @@ def _build_batch_from_pool(batch_size: int, block_size: int):
         _sample_pool.extend(_fetch_samples_with_retry(FETCH_BULK))
 
     trimmed = []
-    tails = []
     for cat, tokens in _sample_pool:
         if len(tokens) > block_size + 1:
-            if len(tails) < MAX_CACHE_SIZE:
-                tails.append((cat, tokens[block_size:]))
-            else:
-                print(f"WARNING: pool full ({MAX_CACHE_SIZE}), discarding tail of sample")
+            # tail discarded (same rationale as _plan_fim — no pool reservoir)
             tokens = tokens[:block_size + 1]
         if len(tokens) >= MIN_SAMPLE_TOKENS:
             trimmed.append((cat, tokens))
@@ -924,7 +920,7 @@ def _build_batch_from_pool(batch_size: int, block_size: int):
                 break
         if not progressed:
             break
-    _sample_pool = tails + [item for lst in buckets.values() for item in lst]
+    _sample_pool = [item for lst in buckets.values() for item in lst]
 
     if not chosen:
         return (torch.zeros(1, 1, dtype=torch.long),
@@ -1376,7 +1372,15 @@ if __name__ == "__main__":
         if not math.isfinite(loss_val) or loss_val > LOSS_SKIP_THRESHOLD:
             # corrupted/degenerate batch: don't backprop or accumulate it
             _stat("skip_micro")
-            print(f"  skipped micro-step: loss {loss_val:.2f} (per-token threshold {LOSS_SKIP_THRESHOLD})")
+            _cat_names = [CAT_NAME_BY_ID.get(c, str(c)) for c in cats]
+            if row_loss_acc is not None and row_cnt_acc is not None:
+                _row_means = [f"{float(w.detach() / max(rc.detach(), 1)):.1f}"
+                              for w, rc in zip(row_loss_acc, row_cnt_acc)]
+            else:
+                _row_means = ["?"] * len(cats)
+            print(f"  skipped micro-step: loss {loss_val:.2f} n_tok {n_tok} "
+                  f"row_losses [{','.join(_row_means)}] cats {_cat_names} "
+                  f"(per-token threshold {LOSS_SKIP_THRESHOLD})")
             del hidden, loss, x, y
             return 0.0, 0.0, 0.0, 0, {}
         # FIX.md D1: fixed token normalizer — micro-batches contribute to the

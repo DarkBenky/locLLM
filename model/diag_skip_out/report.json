@@ -1,0 +1,306 @@
+{
+  "config": {
+    "batch_size": 7,
+    "block_size": 8192
+  },
+  "phase2": {
+    "config": {
+      "batch_size": 7,
+      "block_size": 8192,
+      "dim": 1536,
+      "n_layers": 52,
+      "n_heads": 24,
+      "vocab": 32014,
+      "fim_ratio": 0.6,
+      "fim_variants": 1,
+      "short_mid_cum": 0.8,
+      "long_mid_max": 2048,
+      "min_sample_tokens": 64,
+      "pool_min": 512,
+      "fetch_bulk": 512,
+      "loss_chunk": 1024,
+      "z_loss_coef": 0.0001,
+      "fim_mode": true,
+      "rag_train_mode": false,
+      "ckpt": "step_big_fim_217500.pt",
+      "ckpt_step": 217500,
+      "ffn_hidden": 9984,
+      "threshold": 5.0,
+      "smoke_loss": 1.614,
+      "elapsed_s": 461.6
+    },
+    "n_batches": 200,
+    "n_skipped": 0,
+    "skip_rate": 0.0,
+    "loss_all": {
+      "min": 0.2459,
+      "p10": 0.6522,
+      "p50": 1.0807,
+      "p90": 1.7611,
+      "max": 2.2298
+    },
+    "loss_skipped": {
+      "n": 0,
+      "min": null,
+      "p25": null,
+      "p50": null,
+      "p75": null,
+      "max": null
+    },
+    "loss_kept": {
+      "n": 200,
+      "p10": 0.6522,
+      "p50": 1.0807,
+      "p90": 1.7611
+    },
+    "n_tok_all": {
+      "p10": 961,
+      "p50": 2724,
+      "p90": 15589
+    },
+    "n_tok_skipped": {
+      "p10": null,
+      "p50": null
+    },
+    "n_tok_kept": {
+      "p50": 2724
+    },
+    "thin_skips_frac_lt400": null,
+    "bursts": {
+      "n_runs": 0,
+      "max_run": 0,
+      "runs": []
+    },
+    "corr": {
+      "loss_vs_ntok": -0.1689,
+      "skip_vs_ntok": null
+    },
+    "rows_skipped": null,
+    "rows_kept": {
+      "n_rows": 1400,
+      "any_hit_frac": 0.27214285714285713,
+      "name_hits_per_row": 0.08857142857142856,
+      "repo_hits_per_row": 0.005,
+      "html_hits_per_row": 2.724285714285714,
+      "non_ascii_mean": 0.011434785714285715,
+      "n_tok_mean": 807.2542857142857
+    },
+    "supervised_tokens": {
+      "total": 1130156,
+      "in_skipped": 0,
+      "skipped_share": 0.0
+    },
+    "threshold_sweep": {
+      "4.0": 0.0,
+      "5.0": 0.0,
+      "6.0": 0.0,
+      "7.0": 0.0,
+      "8.0": 0.0,
+      "9.0": 0.0,
+      "10.0": 0.0,
+      "11.0": 0.0
+    },
+    "category_table": [
+      {
+        "fim": false,
+        "cat": "json",
+        "n_rows": 112,
+        "n_rows_in_skips": 0,
+        "n_tok": 212646,
+        "mean_row_loss": 1.208
+      },
+      {
+        "fim": false,
+        "cat": "java",
+        "n_rows": 81,
+        "n_rows_in_skips": 0,
+        "n_tok": 138321,
+        "mean_row_loss": 0.757
+      },
+      {
+        "fim": false,
+        "cat": "c",
+        "n_rows": 30,
+        "n_rows_in_skips": 0,
+        "n_tok": 96948,
+        "mean_row_loss": 0.756
+      },
+      {
+        "fim": false,
+        "cat": "star_coder",
+        "n_rows": 25,
+        "n_rows_in_skips": 0,
+        "n_tok": 80519,
+        "mean_row_loss": 0.83
+      },
+      {
+        "fim": false,
+        "cat": "javascript",
+        "n_rows": 59,
+        "n_rows_in_skips": 0,
+        "n_tok": 76840,
+        "mean_row_loss": 1.132
+      },
+      {
+        "fim": false,
+        "cat": "markdown",
+        "n_rows": 53,
+        "n_rows_in_skips": 0,
+        "n_tok": 70704,
+        "mean_row_loss": 1.965
+      },
+      {
+        "fim": false,
+        "cat": "python",
+        "n_rows": 65,
+        "n_rows_in_skips": 0,
+        "n_tok": 69583,
+        "mean_row_loss": 1.147
+      },
+      {
+        "fim": false,
+        "cat": "html",
+        "n_rows": 11,
+        "n_rows_in_skips": 0,
+        "n_tok": 60659,
+        "mean_row_loss": 1.0
+      },
+      {
+        "fim": false,
+        "cat": "c++",
+        "n_rows": 50,
+        "n_rows_in_skips": 0,
+        "n_tok": 45991,
+        "mean_row_loss": 1.187
+      },
+      {
+        "fim": false,
+        "cat": "c#",
+        "n_rows": 40,
+        "n_rows_in_skips": 0,
+        "n_tok": 34098,
+        "mean_row_loss": 1.019
+      },
+      {
+        "fim": false,
+        "cat": "php",
+        "n_rows": 30,
+        "n_rows_in_skips": 0,
+        "n_tok": 33909,
+        "mean_row_loss": 1.27
+      },
+      {
+        "fim": false,
+        "cat": "typescript",
+        "n_rows": 35,
+        "n_rows_in_skips": 0,
+        "n_tok": 29614,
+        "mean_row_loss": 0.949
+      },
+      {
+        "fim": true,
+        "cat": "java",
+        "n_rows": 132,
+        "n_rows_in_skips": 0,
+        "n_tok": 19505,
+        "mean_row_loss": 0.702
+      },
+      {
+        "fim": true,
+        "cat": "javascript",
+        "n_rows": 71,
+        "n_rows_in_skips": 0,
+        "n_tok": 11384,
+        "mean_row_loss": 0.783
+      },
+      {
+        "fim": true,
+        "cat": "star_coder",
+        "n_rows": 36,
+        "n_rows_in_skips": 0,
+        "n_tok": 11213,
+        "mean_row_loss": 0.858
+      },
+      {
+        "fim": true,
+        "cat": "c",
+        "n_rows": 39,
+        "n_rows_in_skips": 0,
+        "n_tok": 10941,
+        "mean_row_loss": 0.466
+      },
+      {
+        "fim": true,
+        "cat": "python",
+        "n_rows": 79,
+        "n_rows_in_skips": 0,
+        "n_tok": 8675,
+        "mean_row_loss": 1.113
+      },
+      {
+        "fim": false,
+        "cat": "go",
+        "n_rows": 9,
+        "n_rows_in_skips": 0,
+        "n_tok": 7668,
+        "mean_row_loss": 1.189
+      },
+      {
+        "fim": true,
+        "cat": "c++",
+        "n_rows": 51,
+        "n_rows_in_skips": 0,
+        "n_tok": 7589,
+        "mean_row_loss": 1.003
+      },
+      {
+        "fim": false,
+        "cat": "xml",
+        "n_rows": 7,
+        "n_rows_in_skips": 0,
+        "n_tok": 7506,
+        "mean_row_loss": 0.751
+      },
+      {
+        "fim": false,
+        "cat": "tsx",
+        "n_rows": 11,
+        "n_rows_in_skips": 0,
+        "n_tok": 7385,
+        "mean_row_loss": 1.186
+      },
+      {
+        "fim": false,
+        "cat": "dart",
+        "n_rows": 8,
+        "n_rows_in_skips": 0,
+        "n_tok": 7126,
+        "mean_row_loss": 0.771
+      },
+      {
+        "fim": false,
+        "cat": "kotlin",
+        "n_rows": 11,
+        "n_rows_in_skips": 0,
+        "n_tok": 6528,
+        "mean_row_loss": 1.043
+      },
+      {
+        "fim": false,
+        "cat": "r",
+        "n_rows": 3,
+        "n_rows_in_skips": 0,
+        "n_tok": 5869,
+        "mean_row_loss": 2.032
+      },
+      {
+        "fim": true,
+        "cat": "c#",
+        "n_rows": 59,
+        "n_rows_in_skips": 0,
+        "n_tok": 5647,
+        "mean_row_loss": 0.924
+      }
+    ]
+  }
+}

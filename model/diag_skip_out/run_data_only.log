@@ -1,0 +1,47 @@
+stdout tee'd to diag_skip_out/run.log
+FIM mode from env: True
+======================================================================
+diag_skip_micro: B=7 T=8192 fim_mode=True seed=1234
+======================================================================
+code categories for FIM: 70 IDs
+[diag] patched sample fetch: timeout 15s, 3 request retries, max 8 fetch attempts (visible progress)
+
+======================================================================
+PHASE 1 — data-only scan (pool 512 samples, 40 assembled batches)
+======================================================================
+pool scan: 512 samples fetched in 20s
+  len: p10 56 p50 363 p90 2482 min 6 max 82765
+  <64 tok: 10.5% | <512 tok: 58.6%
+  redaction-marker samples (any <tag> hit): 36.3%
+  non-ASCII ratio: mean 0.69% | >5% in 2.3%
+  top categories: {'java': 99, 'python': 62, 'javascript': 58, 'c#': 34, 'json': 32, 'php': 31, 'c++': 28, 'typescript': 26, 'c': 23, 'star_coder': 19, 'kotlin': 11, 'tsx': 11}
+assembly scan: 40 batches | rows/batch 7
+  sup tokens/batch: p10 4115 p50 8260 p90 14489
+  thin batches (<400 sup tok): 0.0%
+  rows with redaction markers: 35.7%
+  row categories: {(True, 'java'): 24, (False, 'markdown'): 22, (False, 'json'): 22, (True, 'python'): 19, (True, 'javascript'): 17, (False, 'java'): 15, (True, 'c#'): 13, (True, 'php'): 12, (False, 'python'): 12, (True, 'c++'): 11, (True, 'star_coder'): 9, (False, 'javascript'): 9}
+Traceback (most recent call last):
+  File "/root/locLLM/model/diag_skip_micro.py", line 803, in <module>
+    main()
+    ~~~~^^
+  File "/root/locLLM/model/diag_skip_micro.py", line 798, in main
+    json.dump(report, f, indent=2)
+    ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+  File "/root/miniconda3/lib/python3.14/json/__init__.py", line 181, in dump
+    for chunk in iterable:
+                 ^^^^^^^^
+  File "/root/miniconda3/lib/python3.14/json/encoder.py", line 444, in _iterencode
+    yield from _iterencode_dict(o, _current_indent_level)
+  File "/root/miniconda3/lib/python3.14/json/encoder.py", line 413, in _iterencode_dict
+    yield from chunks
+  File "/root/miniconda3/lib/python3.14/json/encoder.py", line 413, in _iterencode_dict
+    yield from chunks
+  File "/root/miniconda3/lib/python3.14/json/encoder.py", line 413, in _iterencode_dict
+    yield from chunks
+  File "/root/miniconda3/lib/python3.14/json/encoder.py", line 381, in _iterencode_dict
+    raise TypeError(f'keys must be str, int, float, bool or None, '
+                    f'not {key.__class__.__name__}')
+TypeError: keys must be str, int, float, bool or None, not tuple
+when serializing dict item 'row_categories'
+when serializing dict item 'assemblies'
+when serializing dict item 'phase1'
