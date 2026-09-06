@@ -1532,16 +1532,21 @@ if __name__ == "__main__":
                 continue
             tokens, pre_end, mid_end = out
             fim_eval_set.append(_fim_eval_item(cid, tokens, pre_end, mid_end, lang))
-        # 2) server-derived samples — fetched once, cached to disk
+        # 2) server-derived samples — fetched once, cached to disk.
+        # A too-small legacy cache (n=8 quantizes the gen metrics to 0.125
+        # steps) is discarded and rebuilt with a stratified fetch.
         cached = load_eval_items(EVAL_FIM_PATH)
+        if cached is not None and len(cached) < 16:
+            cached = None
         if cached is None:
             items = []
             need = max(0, n - len(fim_eval_set))
+            lang_counts = {}
             attempts = 0
-            while len(items) < need and attempts < 6:
+            while len(items) < need and attempts < 40:
                 attempts += 1
                 try:
-                    fresh = get_next_samples(need - len(items) + 8)
+                    fresh = get_next_samples(need - len(items) + 16)
                 except RuntimeError:
                     break
                 if not fresh:
@@ -1551,11 +1556,17 @@ if __name__ == "__main__":
                         break
                     if cat not in CODE_CATEGORY_IDS or len(tokens) < 200:
                         continue
+                    name = CAT_NAME_BY_ID.get(cat)
+                    # language stratification: soft cap per language so the set
+                    # is not dominated by one language of the data stream
+                    if lang_counts.get(name, 0) >= max(3, need // 8):
+                        continue
                     out = _fim_eval_split(tokens, fim_cap)
                     if out is None:
                         continue
                     tok, pre_end, mid_end = out
-                    items.append((cat, tok, pre_end, mid_end, CAT_NAME_BY_ID.get(cat)))
+                    items.append((cat, tok, pre_end, mid_end, name))
+                    lang_counts[name] = lang_counts.get(name, 0) + 1
             save_eval_items(EVAL_FIM_PATH, [
                 {"cat": c, "tokens": list(t), "pre_end": p, "mid_end": m, "lang": lg}
                 for c, t, p, m, lg in items])
@@ -1615,9 +1626,9 @@ if __name__ == "__main__":
     @torch.no_grad()
     def run_fim_gen_eval(step: int):
         """FIM middle-completion quality (FIX.md 21):
-        - teacher-forced middle top-1 (batched, exact model score on the span)
+        - teacher-forced middle top-1 (batched, span-only: padding excluded)
         - greedy generation: prefix_acc, exact@k, first-line exact match,
-          token edit similarity (SAFIM-style ES)
+          token edit similarity (SAFIM-style ES), micro + per-sample macro
         prefix_acc is de-emphasized in favor of the sharper metrics."""
         if not fim_eval_set or DEVICE == "cpu":
             return
@@ -1645,18 +1656,22 @@ if __name__ == "__main__":
             return line
 
         # ---- teacher-forced middle top-1 (batched) ----
+        # Only SUPERVISED positions count (the middle span, masked exactly like
+        # training). The old scan scored every position up to the batch's padded
+        # width, so ~89% of the denominator was zero-padding (constant) — that
+        # froze top1_tf at 0.278 while real quality moved.
         top1_correct = top1_total = 0
         step_chunk = min(4, len(items))
         for s0 in range(0, len(items), step_chunk):
             batch = items[s0:s0 + step_chunk]
             prepared = []
-            mid_idxs = []
+            masks = []
             for cat, tokens, pre_end, mid_end, context, lang in batch:
                 seq = torch.tensor(tokens, dtype=torch.long)
-                vseq, _ = _fim_variant(seq, pre_end, mid_end, context,
-                                       lang or CAT_NAME_BY_ID.get(cat))
+                vseq, mt = _fim_variant(seq, pre_end, mid_end, context,
+                                        lang or CAT_NAME_BY_ID.get(cat))
                 prepared.append(vseq)
-                mid_idxs.append(int((vseq == FIM_MID).nonzero()[0].item()))
+                masks.append(mt)
             n_max = max(len(s) - 1 for s in prepared)
             x = torch.zeros((len(prepared), n_max), dtype=torch.long, device=DEVICE)
             for i, s in enumerate(prepared):
@@ -1669,12 +1684,15 @@ if __name__ == "__main__":
                     logits_c = model.lm_head(hidden[:, c:c + LOSS_CHUNK])  # (B, chunk, V)
                     preds = logits_c.argmax(dim=-1)
                     for i in range(len(prepared)):
-                        mi = mid_idxs[i]
+                        n = len(prepared[i]) - 1
                         for j in range(c, min(c + LOSS_CHUNK, n_max - 1)):
-                            if j < mi or x[i, j + 1].item() == FIM_END:
+                            if j + 1 >= n or not masks[i][j]:
+                                continue  # padding / prefix / suffix / markers
+                            tgt = x[i, j + 1].item()
+                            if tgt == FIM_END:
                                 continue
                             top1_total += 1
-                            if preds[i, j - c] == x[i, j + 1]:
+                            if preds[i, j - c] == tgt:
                                 top1_correct += 1
             del hidden, logits_c, x
         top1_tf = top1_correct / max(top1_total, 1)
@@ -1685,6 +1703,9 @@ if __name__ == "__main__":
         fl_exacts = 0
         es_sum = 0.0
         count = 0
+        # per-sample (macro) arrays — with a small eval set the token-weighted
+        # micro aggregates quantize to 1/n steps; macro means move smoothly.
+        pref_list, es_list, fl_list, exact_list = [], [], [], []
         for cat, tokens, pre_end, mid_end, context, lang in items:
             seq = torch.tensor(tokens, dtype=torch.long)
             sample_lang = lang or CAT_NAME_BY_ID.get(cat)
@@ -1704,25 +1725,39 @@ if __name__ == "__main__":
                         pref += 1
                     else:
                         break
-                accs += pref / k
-                if gen_ids[:k] == ref[:k]:
-                    exacts += 1
-                if _first_line(gen_ids) == _first_line(ref):
-                    fl_exacts += 1
-                es_sum += 1.0 - _lev(gen_ids[:k], ref[:k]) / max(k, 1)
+                pref_r = pref / k
+                es_i = 1.0 - _lev(gen_ids[:k], ref[:k]) / max(k, 1)
+                fl_i = 1.0 if _first_line(gen_ids) == _first_line(ref) else 0.0
+                ex_i = 1.0 if gen_ids[:k] == ref[:k] else 0.0
+                accs += pref_r
+                es_sum += es_i
+                exacts += ex_i
+                fl_exacts += fl_i
+                pref_list.append(pref_r)
+                es_list.append(es_i)
+                fl_list.append(fl_i)
+                exact_list.append(ex_i)
                 count += 1
         _ema_restore(stash)
         model.train()
         if count:
             es = es_sum / count
-            print(f"  fim gen eval @ step {step}: top1_tf {top1_tf:.3f} | prefix_acc {accs / count:.3f} | "
-                  f"exact@{FIM_EVAL_GEN_TOKENS} {exacts / count:.2f} | first-line {fl_exacts / count:.2f} | "
-                  f"edit-sim {es:.3f}")
+            macro_exact = sum(exact_list) / count
+            macro_fl = sum(fl_list) / count
+            macro_es = sum(es_list) / count
+            print(f"  fim gen eval @ step {step}: top1_tf {top1_tf:.3f} (span-only) | prefix_acc {accs / count:.3f} | "
+                  f"exact@{FIM_EVAL_GEN_TOKENS} {exacts / count:.2f} (macro {macro_exact:.2f}) | "
+                  f"first-line {fl_exacts / count:.2f} (macro {macro_fl:.2f}) | "
+                  f"edit-sim {es:.3f} (macro {macro_es:.3f}) | n={count}")
             wandb.log({"eval_fim_gen_top1_tf": top1_tf,
                        "eval_fim_gen_prefix_acc": accs / count,
                        "eval_fim_gen_exact": exacts / count,
                        "eval_fim_gen_firstline": fl_exacts / count,
-                       "eval_fim_gen_edit_sim": es}, step=step)
+                       "eval_fim_gen_edit_sim": es,
+                       "eval_fim_gen_exact_macro": macro_exact,
+                       "eval_fim_gen_firstline_macro": macro_fl,
+                       "eval_fim_gen_edit_sim_macro": macro_es,
+                       "eval_fim_gen_n": count}, step=step)
 
     build_eval_set()
     build_fim_eval_set()
